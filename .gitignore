@@ -8,3 +8,8 @@ dist/
 *.jsonl
 !tests/fixtures/*.jsonl
 .DS_Store
+
+# Third-party transcripts: never committed (training-corpus canary)
+evals/external/
+evals/probe/cache/
+!evals/probe/fixtures.jsonl
