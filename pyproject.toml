@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Watch the chain of thought of open-weight reasoning models and flag what you worry about."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Cyrill Glockner" }]
 keywords = ["llm", "chain-of-thought", "monitoring", "ai-safety", "reasoning"]
 classifiers = [

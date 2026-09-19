@@ -40,7 +40,7 @@ Chunking: score on sentence or paragraph boundaries with a rolling window of the
 ## Build order
 
 1. `Judge` interface + `LLMJudge` + default rubric + tests with canned traces. Done 2026-09-18.
-2. Config: `cotwatcher.toml` + env overrides, endpoints for model and judge.
+2. Config: `cotwatcher.toml` + env overrides, endpoints for model and judge. Done 2026-09-19.
 3. Stream tap over a streamed `chat.completions` response; async scoring queue; `watch()` wrapper.
 4. Policy + actions (JSONL log, callback, halt).
 5. CLI: `cotwatcher score traces.jsonl --rubric my.yaml`.

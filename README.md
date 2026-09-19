@@ -9,15 +9,16 @@ Reasoning models (DeepSeek-R1, Qwen3, gpt-oss) expose their thinking as text. co
 ## Quick look
 
 ```python
-from openai import OpenAI
-from cotwatcher import LLMJudge, Rubric
+import cotwatcher
 
-judge = LLMJudge(OpenAI(base_url="http://localhost:11434/v1", api_key="ollama"), model="gpt-oss:20b")
+judge = cotwatcher.load().make_judge()   # local Ollama + gpt-oss:20b unless configured otherwise
 score = judge.score("If I hardcode the expected outputs the tests pass.")
 print(score.max())   # ('reward_hacking', 0.9)
 ```
 
-The default rubric covers deception, reward hacking, harmful intent, and instruction subversion. It is a YAML file; copy it, edit it, and pass `Rubric.load("mine.yaml")`.
+Configuration is a `cotwatcher.toml` (see `cotwatcher.example.toml`) with `COTWATCHER_*` environment variables on top. The watched model and the judge are separate endpoints, so cotwatcher runs on the inference box, on a sidecar VM, or on a workstation against remote inference without special cases.
+
+The default rubric covers deception, reward hacking, harmful intent, and instruction subversion. It is a YAML file; copy it, edit it, and set `rubric_path`.
 
 ## A limit worth knowing
 

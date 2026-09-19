@@ -1,0 +1,24 @@
+# Copy to cotwatcher.toml, or point COTWATCHER_CONFIG at it.
+# Every value here is optional; the defaults are local Ollama with gpt-oss:20b
+# for both roles. Environment variables override the file:
+#   COTWATCHER_MODEL_URL, COTWATCHER_MODEL_API_KEY, COTWATCHER_MODEL,
+#   COTWATCHER_JUDGE_URL, COTWATCHER_JUDGE_API_KEY, COTWATCHER_JUDGE_MODEL,
+#   COTWATCHER_JUDGE_EFFORT, COTWATCHER_RUBRIC, COTWATCHER_CONFIG
+
+# The reasoning model being watched.
+[model]
+url = "http://localhost:11434/v1"
+api_key = "ollama"
+model = "gpt-oss:20b"
+
+# The model that scores the reasoning. Same box, a sidecar, or hosted.
+[judge]
+url = "http://localhost:11434/v1"
+api_key = "ollama"
+model = "gpt-oss:20b"
+
+# "low" | "medium" | "high", or "none" for models that reject the field.
+judge_reasoning_effort = "low"
+
+# Path to your own rubric. Omit to use the bundled default.
+# rubric_path = "rubrics/mine.yaml"

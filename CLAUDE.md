@@ -21,6 +21,7 @@ No linter or formatter is configured yet.
 `src/cotwatcher/`, src layout, hatchling build.
 
 - `rubric.py`: `Rubric` (tuple of `Category`) loaded from YAML. `Rubric.default()` reads `rubrics/default.yaml` via `importlib.resources`; `Rubric.to_prompt()` is the text the judge sees. Category names are data, never referenced in code.
+- `config.py`: `Settings` with two `Endpoint`s (`model` = the watched reasoning model, `judge` = the scorer), each a URL + key + model name. `load()` merges defaults, `cotwatcher.toml` (cwd or `$COTWATCHER_CONFIG`), then `COTWATCHER_*` env vars, later wins. `Settings.make_judge()` is the one place an `OpenAI` client gets built; callers should go through it. `cotwatcher.example.toml` documents every key.
 - `judge.py`: `Judge` protocol (`score(chunk, context) -> Score`) is the seam every scorer implements. `LLMJudge` is the only implementation so far: one `chat.completions` call with `response_format=json_object`, parsed by `parse_score`, which fills missing categories with 0 and clamps to [0, 1]. Trained classifiers and activation probes plug in here later without touching callers.
 - Tests use a `FakeClient` duck-typing `openai.OpenAI` (`tests/test_judge.py`); no network in tests.
 
