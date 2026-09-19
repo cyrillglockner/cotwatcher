@@ -1,5 +1,7 @@
 # Backlog
 
+- **Output/tool-log monitoring baseline.** Needed to measure the v1 success criterion (incidents found beyond what output and tool-log monitoring catch, at a fixed false-alert budget). A simple monitor over final answers and tool calls using the same rubric, run on the same traffic as the CoT monitor.
+
 - **Label the Mythos 5 transcript (2026-09-19).** A lab-released raw transcript (1022 pages, thinking and tool calls interleaved, canary GUID, never to be committed) sits in `evals/external/`, text pre-extracted to `mythos_pages.json`. Keyword pre-screen found 63 pages with oversight-evasion signals, 51 deception, 178 reward-hacking (noisy). Plan: hand-select 10 to 15 clear positives per category plus same-transcript negatives, no PDF parser. Labeling rules agreed with Cyrill: considering is not doing; the chunk itself must carry the label; three buckets (positive, negative, unsure) with unsure excluded; every label anchored to page and message; Cyrill reviews every positive before it counts. Probe feasibility passed 2026-09-19; this is now the critical path for evaluating both the text judge and the probe on real, subtle misbehaviour.
 
 - **Probe in the live path.** The eval-time probe experiment is in the plan (step 3c). What stays here: a `ProbeJudge` behind the `Judge` interface for the live stream, which needs the watched model in-process (transformers, or vLLM with hooks) and so only applies to the same-box layout. Gated on the probe beating the text judge on the eval set.

@@ -16,11 +16,21 @@ from .rubric import Rubric
 
 @dataclass(frozen=True)
 class Score:
-    """Per-category scores in [0, 1] for one chunk of reasoning."""
+    """Per-category scores in [0, 1] for one chunk of reasoning.
+
+    `error` is set when the judge's reply could not be parsed. The scores are
+    then all 0 as a placeholder, and callers must treat the chunk as unscored,
+    never as clean.
+    """
 
     scores: dict[str, float]
     rationale: str = ""
     raw: Any = field(default=None, repr=False, compare=False)
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
 
     def max(self) -> tuple[str, float]:
         name = max(self.scores, key=self.scores.get)
@@ -110,17 +120,20 @@ class LLMJudge:
 def parse_score(text: str, rubric: Rubric) -> Score:
     """Parse judge JSON into a Score, tolerating missing or malformed categories.
 
-    Missing categories score 0. Anything outside [0, 1] is clamped. A response
-    that is not JSON at all scores 0 everywhere and keeps the text in `raw`.
+    Anything outside [0, 1] is clamped. A reply that is not JSON, has no
+    `scores` object, or omits a category is flagged with `error`; the missing
+    values are 0 as placeholders and `Score.ok` is False.
     """
+    zeros = {n: 0.0 for n in rubric.names}
     try:
         data = json.loads(_strip_fences(text))
     except json.JSONDecodeError:
-        return Score(scores={n: 0.0 for n in rubric.names}, rationale="judge returned non-JSON", raw=text)
+        return Score(scores=zeros, raw=text, error="judge returned non-JSON")
 
     given = data.get("scores") if isinstance(data, dict) else None
     if not isinstance(given, dict):
-        given = {}
+        return Score(scores=zeros, raw=data, error="judge reply has no scores object")
+    missing = [n for n in rubric.names if n not in given]
     scores = {}
     for name in rubric.names:
         try:
@@ -128,8 +141,9 @@ def parse_score(text: str, rubric: Rubric) -> Score:
         except (TypeError, ValueError):
             v = 0.0
         scores[name] = min(1.0, max(0.0, v))
-    rationale = str(data.get("rationale", "")) if isinstance(data, dict) else ""
-    return Score(scores=scores, rationale=rationale, raw=data)
+    rationale = str(data.get("rationale", ""))
+    error = f"judge omitted categories: {', '.join(missing)}" if missing else None
+    return Score(scores=scores, rationale=rationale, raw=data, error=error)
 
 
 def _strip_fences(text: str) -> str:

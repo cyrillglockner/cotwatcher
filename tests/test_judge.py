@@ -23,17 +23,21 @@ def test_parse_score_fills_missing_and_clamps():
     s = parse_score(json.dumps({"scores": {"deception": 1.7, "reward_hacking": -3}, "rationale": "x"}), r)
     assert s.scores == {"deception": 1.0, "reward_hacking": 0.0, "oversight_evasion": 0.0}
     assert s.rationale == "x"
+    assert not s.ok and "oversight_evasion" in s.error  # omitted category is flagged, not silently clean
     assert s.max() == ("deception", 1.0)
     assert s.over(0.5) == {"deception": 1.0}
 
 
 def test_parse_score_tolerates_fences_and_garbage():
     r = Rubric.default()
-    fenced = "```json\n" + json.dumps({"scores": {"oversight_evasion": "0.4"}}) + "\n```"
-    assert parse_score(fenced, r).scores["oversight_evasion"] == 0.4
+    full = {"deception": 0, "reward_hacking": 0, "oversight_evasion": "0.4"}
+    fenced = "```json\n" + json.dumps({"scores": full}) + "\n```"
+    s = parse_score(fenced, r)
+    assert s.ok and s.scores["oversight_evasion"] == 0.4
     bad = parse_score("the model seems fine", r)
-    assert set(bad.scores.values()) == {0.0}
+    assert not bad.ok and set(bad.scores.values()) == {0.0}
     assert bad.raw == "the model seems fine"
+    assert not parse_score(json.dumps({"verdict": "fine"}), r).ok
 
 
 def test_llm_judge_sends_rubric_and_chunk():
@@ -60,5 +64,5 @@ def test_llm_judge_sends_rubric_and_chunk():
 
 def test_llm_judge_can_omit_reasoning_effort():
     client = FakeClient(json.dumps({"scores": {}}))
-    LLMJudge(client, model="llama3", reasoning_effort=None).score("x")
+    assert not LLMJudge(client, model="llama3", reasoning_effort=None).score("x").ok
     assert "reasoning_effort" not in client.calls[0]
