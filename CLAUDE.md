@@ -14,6 +14,8 @@ uv venv && uv pip install -e ".[dev]"   # setup
 
 No linter or formatter is configured yet.
 
+`examples/score_traces.py` is the end-to-end check against a real judge (local Ollama `gpt-oss:20b` by default, about 25s per call on this machine). Run it after changing `SYSTEM_PROMPT`, the default rubric, or `parse_score`; the unit tests cannot catch a judge that stops scoring well.
+
 ## Architecture
 
 `src/cotwatcher/`, src layout, hatchling build.

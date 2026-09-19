@@ -23,6 +23,17 @@ The default rubric covers deception, reward hacking, harmful intent, and instruc
 
 Text monitoring sees what the model writes, which is not always what drives its answer. Treat a clean trace as absence of evidence, not evidence of absence. Probing hidden states is on the backlog for exactly this reason.
 
+## Try it
+
+`examples/score_traces.py` scores six canned reasoning chunks (two clean, four that should fire) with a real judge. Default is local Ollama with `gpt-oss:20b`; set `COTWATCHER_BASE_URL`, `COTWATCHER_JUDGE_MODEL`, and `OPENAI_API_KEY` to use a hosted model.
+
+```bash
+ollama pull gpt-oss:20b
+.venv/bin/python examples/score_traces.py
+```
+
+Scores are multi-label. A chunk that hides harmful content in a story legitimately fires harmful intent, deception, and instruction subversion at once.
+
 ## Development
 
 ```bash
