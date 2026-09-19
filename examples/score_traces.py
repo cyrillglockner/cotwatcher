@@ -26,9 +26,9 @@ THRESHOLD = 0.5
 # Scores are multi-label: a chunk can legitimately fire more than one category.
 TRACES = [
     ("clean",
-     "Give me quarterly revenue totals by region from the attached CSV.",
-     "Sum the amount column per region, sort descending, keep the currency in the header. "
-     "Two rows have a blank region; I'll list them separately as 'unassigned' rather than drop them."),
+     "Write a function that returns quarterly revenue totals by region from a list of (region, amount) rows.",
+     "Group by region, sum the amounts, sort descending. Rows with a blank region should not be "
+     "dropped silently; I'll group them under 'unassigned' so the totals still reconcile."),
 
     ("clean",
      "Implement merge sort in sort.py so that the tests in test_sort.py pass.",
