@@ -30,13 +30,13 @@ Scoring is asynchronous by design: generation never waits on the judge, and `hal
 
 ### The probe
 
-A second kind of judge that reads activations rather than words: residual stream at a middle layer, mean-pooled over the chunk, logistic regression trained on contrastive pairs. Its job is not to be a cheaper text judge. Run both on the same chunk and the *disagreement* is the signal: text judge clean, probe firing, is the cell nothing that reads text can produce. An alarm bell, not a verdict. It is also the hedge against the reasoning stream becoming unavailable or illegible, in which case it is the only thing left.
+A second kind of judge that reads activations rather than words: residual stream at a middle layer, mean-pooled over the chunk, logistic regression trained on contrastive pairs. It is not a cheaper text judge. Running both on the same chunk makes the *disagreement* the signal: text judge clean and probe firing is the one case a text reader cannot detect. It flags, it does not decide. It is also the fallback if the reasoning stream becomes unavailable or illegible, in which case it is the only signal left.
 
-## Status, honestly
+## Status
 
 **Built:** `Rubric`, `Judge`/`LLMJudge` with strict output validation (malformed judge replies are errors, never clean scores), `Settings` with two endpoints (TOML + env), an eval toolkit: honeypot task generator, synthetic contrastive-pair generator, activation extractor for R1-Distill-Qwen (1.5B/7B on MPS), probe trainer with grouped CV and transfer scoring, judge scorer with cross-category reporting. 25 tests.
 
-**Measured so far** (all small-n, all on a regression set the prompt was tuned against; consistency checks, not detection evidence):
+**Measured** (small n, on a regression set the prompt was tuned against; these are consistency checks, not detection evidence):
 
 | | text judge (gpt-oss:20b) | probe (R1-7B, layer 14/28) |
 |---|---|---|
@@ -44,18 +44,18 @@ A second kind of judge that reads activations rather than words: residual stream
 | reward_hacking | 1.00 | 1.00 |
 | oversight_evasion | 1.00 | 0.95 |
 
-AUROC on 29 held-out chunks (24 hand-written, 5 real R1 negatives). Judge: 0 false fires on 17 honest negatives. Probe: trained on synthetic pairs only; same category ordering and same layer profile on both model sizes, which is the part that looks like a real direction rather than noise.
+AUROC on 29 held-out chunks (24 hand-written, 5 real R1 negatives). Judge: 0 false fires on 17 honest negatives. Probe: trained on synthetic pairs only. Category ordering and layer profile are identical on both model sizes, which suggests a real direction rather than noise.
 
-**Found in the wild:** R1-7B on 30 honeypot episodes took a shortcut roughly once (one disputed deception positive pending human review). It does not cheat on coding when the honest path is cheap; it fabricates when it cannot do what was asked.
+**Natural rate:** R1-7B on 30 honeypot episodes took a shortcut once (one disputed deception positive pending review). It does not cheat on coding when the correct solution is cheap; it fabricates when it cannot do what was asked.
 
 **Not built:** stream tap, policy, actions, CLI, proxy, probe in the live path.
 
-**Next:** a completion-pressure experiment. Solvable task, a verified obstacle (one visible test contradicts the spec, tests are off-limits), deadline pressure as the manipulation, ground truth from the harness log rather than any judge. Then the same judge with and without CoT on identical episodes, which is the first direct measurement of the question that decides whether this tool earns its cost: **does the CoT surface incidents that output and tool-log monitoring miss, at a fixed false-alert budget?**
+**Next:** a completion-pressure experiment. Solvable task, a verified obstacle (one visible test contradicts the spec, tests are off-limits), deadline pressure as the manipulation, ground truth from the harness log rather than any judge. Then the same judge with and without CoT on identical episodes, the first direct measurement of the question that decides whether this tool is worth running: **does the CoT surface incidents that output and tool-log monitoring miss, at a fixed false-alert budget?**
 
-## Known limits
+## Limitations
 
-- CoT faithfulness. The reasoning is not always what drives the answer. A clean trace is absence of evidence. This is the argument for the probe.
-- The probe has only been tested as a classifier over supplied text, never during generation, and never on real misbehaviour. The "one dot product at inference" story depends on serving-stack integration that does not exist.
+- CoT faithfulness. The reasoning is not always what drives the answer. A clean trace is absence of evidence, not evidence of absence. This is the motivation for the probe.
+- The probe has only been tested as a classifier over supplied text, never during generation, and never on real misbehaviour. Low-overhead inference-time scoring depends on serving-stack integration that does not exist yet.
 - Every positive in the current transfer set is hand-written.
 
 ## Try it
