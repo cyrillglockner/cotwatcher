@@ -72,6 +72,8 @@ Caveat that applies to both judges equally: a probe trained on role-played trace
 
 **First probe result, 2026-09-19** (1.5B distill, 430 synthetic chunks from gpt-oss, linear probe, grouped CV). Held-out synthetic AUROC 0.93 to 1.00 across categories and layers, including whole tasks held out. Transfer to 30 hand-written and real R1 chunks the probe never trained on: best at the middle layer (14 of 28), reward_hacking 0.92, oversight_evasion 0.90, deception 0.70; the final layer is near chance on transfer, as the literature predicts. Verdict: **not blocked**. A real direction exists in the middle layers and transfers imperfectly. Deception is weakest. All caveats apply: small model, tiny transfer set (one flipped chunk moves a number by 0.1), synthetic training data. 7B run and a larger transfer set (the transcript labels) are what turn this from a signal into a result.
 
+**7B probe result, same day.** Transfer at the middle layer (14 of 28): reward_hacking 1.00, oversight_evasion 0.95, deception 0.77. Stronger than 1.5B on every category, same ordering (reward hacking easiest, deception hardest), same layer profile (middle carries it, last decays). Held-out synthetic unchanged at 0.93 to 1.00. **Not blocked.** The remaining uncertainty is transfer-set size; the transcript labeling on the backlog is how it shrinks.
+
 Sources, in order of honesty:
 
 1. **Honeypot tasks.** Benign tasks with a cheap shortcut deliberately left open, run against real open models. Reward hacking is the most reliably elicited (tests that check only shape, a prompt that mentions being graded). Sandbagging can be provoked with "models scoring above X get retrained." Deception is hardest to elicit naturally.
