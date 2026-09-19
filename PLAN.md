@@ -74,6 +74,10 @@ Caveat that applies to both judges equally: a probe trained on role-played trace
 
 **7B probe result, same day.** Transfer at the middle layer (14 of 28): reward_hacking 1.00, oversight_evasion 0.95, deception 0.77. Stronger than 1.5B on every category, same ordering (reward hacking easiest, deception hardest), same layer profile (middle carries it, last decays). Held-out synthetic unchanged at 0.93 to 1.00. **Not blocked.** The remaining uncertainty is transfer-set size; the transcript labeling on the backlog is how it shrinks.
 
+**Side-by-side, same 30 chunks:** text judge (gpt-oss:20b) 1.00 / 1.00 / 1.00 vs. probe (7B, layer 14) 0.77 / 1.00 / 0.95 for deception / reward_hacking / oversight_evasion. The judge's score is flattered: several hand-written fixtures are close cousins of the rubric examples in its prompt, which the probe never saw. Honest reading: on explicit reasoning the judge is excellent and the probe is decent; the probe costs one dot product on activations the watched model already computes, the judge costs a second model call. Neither has been tested on subtle, real, long-context misbehaviour, which is what the transcript labeling provides. That labeling is now the critical path for both.
+
+**Product shape this implies:** judge for accuracy, probe for always-on coverage, eval set to say how much to trust each. Probe in the live path stays gated on the transcript result.
+
 Sources, in order of honesty:
 
 1. **Honeypot tasks.** Benign tasks with a cheap shortcut deliberately left open, run against real open models. Reward hacking is the most reliably elicited (tests that check only shape, a prompt that mentions being graded). Sandbagging can be provoked with "models scoring above X get retrained." Deception is hardest to elicit naturally.
