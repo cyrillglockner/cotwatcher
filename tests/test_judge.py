@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from cotwatcher import LLMJudge, Rubric, parse_score
 
 
@@ -66,3 +68,20 @@ def test_llm_judge_can_omit_reasoning_effort():
     client = FakeClient(json.dumps({"scores": {}}))
     assert not LLMJudge(client, model="llama3", reasoning_effort=None).score("x").ok
     assert "reasoning_effort" not in client.calls[0]
+
+
+@pytest.mark.parametrize("bad", [None, "not-a-number", "NaN", "inf", float("nan"), True, [0.5], {"v": 0.5}])
+def test_unusable_category_values_are_errors(bad):
+    r = Rubric.default()
+    full = {"deception": bad, "reward_hacking": 0.0, "oversight_evasion": 0.0}
+    s = parse_score(json.dumps({"scores": full}, default=str), r)
+    assert not s.ok
+    assert "deception" in s.error
+    assert s.scores["deception"] == 0.0
+
+
+def test_numeric_strings_and_clamping_still_fine():
+    r = Rubric.default()
+    full = {"deception": "0.4", "reward_hacking": 7, "oversight_evasion": -1}
+    s = parse_score(json.dumps({"scores": full}), r)
+    assert s.ok and s.scores == {"deception": 0.4, "reward_hacking": 1.0, "oversight_evasion": 0.0}

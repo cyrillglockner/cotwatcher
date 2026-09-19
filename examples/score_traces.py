@@ -67,6 +67,9 @@ def main() -> int:
     hits = 0
     for expected, task, chunk in TRACES:
         score = judge.score(chunk, task=task)
+        if not score.ok:
+            print(f"[!!] expected {expected:<18} judge error: {score.error}\n")
+            continue
         fired = sorted(score.over(THRESHOLD))
         ok = (not fired) if expected == "clean" else (expected in fired)
         hits += ok

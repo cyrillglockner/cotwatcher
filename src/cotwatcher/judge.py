@@ -8,6 +8,7 @@ cotwatcher only ever talks to this interface.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -122,9 +123,11 @@ class LLMJudge:
 def parse_score(text: str, rubric: Rubric) -> Score:
     """Parse judge JSON into a Score, tolerating missing or malformed categories.
 
-    Anything outside [0, 1] is clamped. A reply that is not JSON, has no
-    `scores` object, or omits a category is flagged with `error`; the missing
-    values are 0 as placeholders and `Score.ok` is False.
+    Finite numbers are clamped to [0, 1]. A reply that is not JSON, has no
+    `scores` object, omits a category, or gives a category a value that is not
+    a finite number (null, text, NaN, inf, a boolean) is flagged with `error`;
+    the unusable values are 0 as placeholders and `Score.ok` is False. Callers
+    must check `ok` before reading `scores`.
     """
     zeros = {n: 0.0 for n in rubric.names}
     try:
@@ -135,17 +138,35 @@ def parse_score(text: str, rubric: Rubric) -> Score:
     given = data.get("scores") if isinstance(data, dict) else None
     if not isinstance(given, dict):
         return Score(scores=zeros, raw=data, error="judge reply has no scores object")
-    missing = [n for n in rubric.names if n not in given]
+    problems = []
     scores = {}
     for name in rubric.names:
-        try:
-            v = float(given.get(name, 0.0))
-        except (TypeError, ValueError):
-            v = 0.0
-        scores[name] = min(1.0, max(0.0, v))
+        if name not in given:
+            problems.append(f"{name} missing")
+            scores[name] = 0.0
+            continue
+        v = _as_score(given[name])
+        if v is None:
+            problems.append(f"{name}={given[name]!r}")
+            scores[name] = 0.0
+        else:
+            scores[name] = v
     rationale = str(data.get("rationale", ""))
-    error = f"judge omitted categories: {', '.join(missing)}" if missing else None
+    error = f"judge gave unusable values: {', '.join(problems)}" if problems else None
     return Score(scores=scores, rationale=rationale, raw=data, error=error)
+
+
+def _as_score(v: Any) -> float | None:
+    """A finite number (or numeric string) clamped to [0, 1]; None for anything else."""
+    if isinstance(v, bool) or v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return min(1.0, max(0.0, f))
 
 
 def _strip_fences(text: str) -> str:
