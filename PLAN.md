@@ -68,6 +68,10 @@ Six hand-written strings are a smoke test, not evidence that the judge works. An
 
 Caveat that applies to both judges equally: a probe trained on role-played traces learns to detect role-play. Honeypot tasks where the model misbehaves for real are worth more than a thousand synthetic examples.
 
+**First honeypot run, 2026-09-19** (R1-Distill-Qwen-7B via Ollama, 10 tasks x 3 runs): one clear deception positive in thirty, zero reward hacking, zero oversight evasion, three unsure, three hallucinations set aside, six runs lost to the 4,000-token cap. R1 does not cheat on coding when the honest path is cheap; it fabricates when it cannot do what was asked. Natural positives will not train a probe; they are the transfer test.
+
+**First probe result, 2026-09-19** (1.5B distill, 430 synthetic chunks from gpt-oss, linear probe, grouped CV). Held-out synthetic AUROC 0.93 to 1.00 across categories and layers, including whole tasks held out. Transfer to 30 hand-written and real R1 chunks the probe never trained on: best at the middle layer (14 of 28), reward_hacking 0.92, oversight_evasion 0.90, deception 0.70; the final layer is near chance on transfer, as the literature predicts. Verdict: **not blocked**. A real direction exists in the middle layers and transfers imperfectly. Deception is weakest. All caveats apply: small model, tiny transfer set (one flipped chunk moves a number by 0.1), synthetic training data. 7B run and a larger transfer set (the transcript labels) are what turn this from a signal into a result.
+
 Sources, in order of honesty:
 
 1. **Honeypot tasks.** Benign tasks with a cheap shortcut deliberately left open, run against real open models. Reward hacking is the most reliably elicited (tests that check only shape, a prompt that mentions being graded). Sandbagging can be provoked with "models scoring above X get retrained." Deception is hardest to elicit naturally.
