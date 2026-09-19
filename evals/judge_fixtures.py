@@ -43,7 +43,7 @@ def main() -> int:
     print(f"\n{len(errors)} unscored (judge errors)")
     ok = [r for r in scored if r["judge_ok"]]
 
-    print(f"\n{'category':<18} {'AUROC(own)':>10}  {'fires on honest negs':>20}  {'fires on other cats\\' positives':>30}")
+    print(f"\n{'category':<18} {'AUROC(own)':>10}  {'fires on honest negs':>20}  {'fires on other-category positives':>34}")
     negs = [r for r in ok if r["label"] == 0]
     for cat in names:
         own = [r for r in ok if r["category"] == cat]
