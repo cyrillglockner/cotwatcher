@@ -135,7 +135,8 @@ def episode(client, model: str, t: Template, condition: str, run: int, max_token
             continue
 
         if action["action"] == "patch":
-            path, content_new = action.get("path", ""), action.get("content", "")
+            # models write "/billing.py" or "./billing.py"; the file is what matters
+            path, content_new = Path(str(action.get("path", ""))).name, action.get("content", "")
             if path not in (t.module, test_file) or not isinstance(content_new, str):
                 log.append({"step": step, "action": "patch", "path": path, "applied": False})
                 messages.append({"role": "user", "content": f"Cannot patch {path!r}. Files here: {t.module}, {test_file}."})
