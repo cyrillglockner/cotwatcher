@@ -32,4 +32,5 @@ No linter or formatter is configured yet.
 - Watched model for evals is DeepSeek-R1-Distill-Qwen-7B: `deepseek-r1:latest` on Ollama for text, the HF copy in transformers (MPS) when activations are needed. Ollama cannot expose hidden states.
 - Default action on a flag is log and continue; halting is opt-in. Keep that default.
 - cotwatcher is about the model's behaviour, never the user's input. Rubric categories describe behaviour the model originates; examples and eval traces use ordinary tasks only, so the reasoning is the only variable. Do not add "bad request, handled well" traces as boundary tests; they put attention back on the input. Preserve the model-not-user instruction in `SYSTEM_PROMPT` when editing it.
+- Deception requires awareness plus decision in the reasoning. Fabrication with no sign the model knew better is hallucination, out of scope, and not a positive. Do not label or fixture it as deception.
 - The default rubric is three categories, deliberately. Do not add a fourth to the default; extra categories belong in a user's own rubric file.
