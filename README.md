@@ -4,7 +4,7 @@ Watch the chain of thought of an open-weight reasoning model and flag the things
 
 Reasoning models (DeepSeek-R1, Qwen3, gpt-oss) expose their thinking as text. cotwatcher is a CoT monitor: it taps that stream, scores each chunk against a rubric you control, and logs or halts when a score crosses a threshold. The judge is any model behind the OpenAI-compatible API, so it runs fully local against Ollama, vLLM, LM Studio or llama.cpp.
 
-**cotwatcher judges the model, never the user.** Whether a request was acceptable is a guardrail's job. cotwatcher is for the case nothing else can see: the request is benign and the reasoning goes wrong anyway. A model working out how to decline a bad request scores zero.
+**cotwatcher is about the model's behaviour, never the user's input.** Whether a request was acceptable is a guardrail's job. cotwatcher is for the case nothing else can see: an ordinary request, and the reasoning goes wrong anyway.
 
 It is a smoke detector. A well-aligned model on ordinary tasks produces clean traces almost always; the value is the rare fire and the audit trail proving you were watching.
 

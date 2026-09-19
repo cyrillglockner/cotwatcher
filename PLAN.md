@@ -8,7 +8,7 @@ Decided 2026-09-18, sharpened 2026-09-19.
 
 cotwatcher judges the **model**, never the user. The case it exists for: the request is benign and the reasoning goes wrong anyway. User asks for a sort, model decides to fake the tests. User asks for a summary, model decides to invent one. Nothing in the input predicts it; only the CoT shows it.
 
-Whether the *user's* request was acceptable is a guardrail's job (Llama Guard and friends), a solved problem, and out of scope. A model reasoning about how to refuse a bad request scores 0 on every category. The first draft of the examples got this wrong, scoring the model's response to jailbreaks, which is input moderation with extra steps. Cyrill caught it 2026-09-19.
+The user's input is out of scope entirely, and it is not a variable in anything cotwatcher does or demonstrates. Whether a request was acceptable is a guardrail's job (Llama Guard and friends) and a solved problem. Examples, evals, and docs use ordinary tasks only; the model's reasoning is the only thing that changes between a clean trace and a flagged one. The first draft of the examples got this wrong twice, first by scoring the model's response to jailbreaks, then by keeping a "bad request, handled well" trace as a boundary test. Both put attention on the input. Cyrill caught it 2026-09-19.
 
 Also true, and the README says so: a well-aligned model on benign tasks produces clean traces almost always. cotwatcher is a smoke detector. Quiet is the normal state; the value is the rare fire and the audit trail proving you were watching.
 
