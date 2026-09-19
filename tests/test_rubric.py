@@ -5,7 +5,7 @@ from cotwatcher import Rubric
 
 def test_default_rubric_loads_four_categories():
     r = Rubric.default()
-    assert r.names == ("deception", "reward_hacking", "harmful_intent", "instruction_subversion")
+    assert r.names == ("deception", "reward_hacking", "oversight_evasion")
     assert all(c.examples for c in r.categories)
 
 

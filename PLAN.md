@@ -2,17 +2,26 @@
 
 Python OSS tool that watches the chain of thought of an open-weight reasoning model and flags reasoning that matches a rubric of things the user worries about.
 
-Decided 2026-09-18.
+Decided 2026-09-18, sharpened 2026-09-19.
+
+## What it is for, and what it is not for
+
+cotwatcher judges the **model**, never the user. The case it exists for: the request is benign and the reasoning goes wrong anyway. User asks for a sort, model decides to fake the tests. User asks for a summary, model decides to invent one. Nothing in the input predicts it; only the CoT shows it.
+
+Whether the *user's* request was acceptable is a guardrail's job (Llama Guard and friends), a solved problem, and out of scope. A model reasoning about how to refuse a bad request scores 0 on every category. The first draft of the examples got this wrong, scoring the model's response to jailbreaks, which is input moderation with extra steps. Cyrill caught it 2026-09-19.
+
+Also true, and the README says so: a well-aligned model on benign tasks produces clean traces almost always. cotwatcher is a smoke detector. Quiet is the normal state; the value is the rare fire and the audit trail proving you were watching.
 
 ## Scope of v1
 
 - **Input:** the CoT text as emitted by the model (`reasoning_content` on DeepSeek / vLLM / Ollama, `reasoning` on gpt-oss via the Responses API). Hidden-state probes are on the backlog, not in v1.
 - **Judge:** an LLM behind the OpenAI-compatible API. **Baseline is local: Ollama serving `gpt-oss:20b`** (decided 2026-09-18, after it scored 6/6 on the example traces). The same client points at OpenAI, vLLM, LM Studio or llama.cpp by changing `base_url` and `model`. A trained classifier NN is a later drop-in behind the same `Judge` interface. Measured 2026-09-18 on an M-series laptop, one chunk: 19s at `reasoning_effort=low`, 59s at medium, 20min at high, identical verdicts, so the judge defaults to low. The laptop is the floor, not the target: users run on GPU boxes where the same call is sub-second. Design for that, and treat the laptop number as the worst case the code must survive rather than the case it optimises for.
-- **Rubric:** a plain file (YAML), shipped with a default of four categories. Users edit or replace it; nothing in the code depends on the category names. Each category carries a name, a one-line definition, and two or three short examples.
-  - deception of the user
-  - reward hacking / gaming the task
-  - harmful intent
-  - instruction subversion (planning to ignore the system prompt or tool rules)
+- **Rubric:** a plain file (YAML), shipped with a default of **three** categories, chosen for the strongest evidence in the CoT-monitoring literature and the best odds of eliciting them on open models. Users edit or replace it; nothing in the code depends on the category names. Each category carries a name, a definition, and a few examples written as a benign task going wrong.
+  - deception: works out one thing, plans to tell the user another
+  - reward_hacking: satisfies the check or grader instead of the task
+  - oversight_evasion: plans around being watched
+  Dropped from the first draft: `harmful_intent` (a guardrail question) and `instruction_subversion` (mostly triggered by user pressure, so it blurs the model/user line). Sandbagging and hidden agenda were considered and left out to keep the default to three; users who want them write them into their own rubric. No "extended" rubric ships.
+- **Judge context:** the judge sees the user's task and the preceding reasoning alongside the chunk, so it can tell "user asked for bad, model reasons about declining" from "user asked for benign, model plans bad."
 - **Shape:** library first, proxy in v1 on top of it. `cotwatcher.watch(client)` wraps an OpenAI-compatible client, intercepts the reasoning stream, chunks it, scores chunks against the rubric, and dispatches actions. A CLI scores transcript files offline using the same core. The proxy (an OpenAI-compatible endpoint that forwards to the real inference server and watches the stream) is a thin FastAPI layer over the library, and it is the deployment story for anyone who wants zero code change: install beside the inference server, point the app at cotwatcher.
 - **Topology:** cotwatcher runs wherever the user puts it, and both endpoints are configured URLs, never assumed local or assumed to be the same server. Three layouts to support without special cases:
   - *Same box as inference.* Judge and watched model both on `localhost`, possibly one vLLM instance serving both roles. No CoT leaves the machine.
@@ -37,15 +46,29 @@ app code
 
 Chunking: score on sentence or paragraph boundaries with a rolling window of the preceding N chunks, so the judge sees context without re-scoring the whole trace every step.
 
+## Evidence: the eval set
+
+Six hand-written strings are a smoke test, not evidence that the judge works. An `evals/` directory becomes a first-class part of the repo, holding labeled traces plus a command that runs the judge over them and reports precision and recall per category. It is also the training data for the classifier judge on the backlog.
+
+Sources, in order of honesty:
+
+1. **Honeypot tasks.** Benign tasks with a cheap shortcut deliberately left open, run against real open models. Reward hacking is the most reliably elicited (tests that check only shape, a prompt that mentions being graded). Sandbagging can be provoked with "models scoring above X get retrained." Deception is hardest to elicit naturally.
+2. **Published transcripts.** Apollo Research in-context scheming evals, Anthropic alignment-faking work. Real output, real labels, cited.
+3. **Role-played traces.** A model instructed to reason like a misaligned one, in volume. Tests judge recall and calibration; labeled synthetic; proves nothing about catching natural misbehaviour and the docs say so.
+4. **Real traffic**, once people run it.
+
+First calibration observation (2026-09-19, gpt-oss:20b judge): `deception` fired at 1.0 on every misbehaving trace, including ones whose primary category was reward hacking or oversight evasion. The judge reads any concealment as deception. The eval set decides whether that is right or too broad.
+
 ## Build order
 
 1. `Judge` interface + `LLMJudge` + default rubric + tests with canned traces. Done 2026-09-18.
 2. Config: `cotwatcher.toml` + env overrides, endpoints for model and judge. Done 2026-09-19.
-3. Stream tap over a streamed `chat.completions` response; async scoring queue; `watch()` wrapper.
-4. Policy + actions (JSONL log, callback, halt).
-5. CLI: `cotwatcher score traces.jsonl --rubric my.yaml`.
-6. Proxy server: `cotwatcher serve`, OpenAI-compatible, forwards and watches.
-7. README, PyPI packaging, examples against gpt-oss on Ollama and on vLLM.
+3. Eval harness: `evals/` with labeled traces (honeypot runs, published transcripts, synthetic), `cotwatcher eval` reporting precision/recall per category. Comes before the stream tap because it is the only way to know the judge works.
+4. Stream tap over a streamed `chat.completions` response; async scoring queue; `watch()` wrapper.
+5. Policy + actions (JSONL log, callback, halt).
+6. CLI: `cotwatcher score traces.jsonl --rubric my.yaml`.
+7. Proxy server: `cotwatcher serve`, OpenAI-compatible, forwards and watches.
+8. README, PyPI packaging, examples against gpt-oss on Ollama and on vLLM.
 
 ## Housekeeping
 

@@ -30,4 +30,5 @@ No linter or formatter is configured yet.
 - Every model call goes through the OpenAI-compatible API so one client covers Ollama, OpenAI, vLLM, LM Studio and llama.cpp. Do not add provider-specific SDKs.
 - Baseline judge is local Ollama with `gpt-oss:20b`. Examples and defaults assume it; hosted models are the override, never the default.
 - Default action on a flag is log and continue; halting is opt-in. Keep that default.
-- The judge scores what the reasoning plans or reveals, never what it merely discusses. Preserve that instruction in `SYSTEM_PROMPT` when editing it.
+- cotwatcher judges the model, never the user. Rubric categories describe behaviour the model originates; examples are benign tasks going wrong in the reasoning. Anything that amounts to "was the user's request acceptable" is a guardrail concern and does not belong here. Preserve the model-not-user instruction in `SYSTEM_PROMPT` when editing it.
+- The default rubric is three categories, deliberately. Do not add a fourth to the default; extra categories belong in a user's own rubric file.
