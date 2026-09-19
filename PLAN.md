@@ -46,6 +46,12 @@ app code
 
 Chunking: score on sentence or paragraph boundaries with a rolling window of the preceding N chunks, so the judge sees context without re-scoring the whole trace every step.
 
+## Why this beats reading the stream yourself
+
+Assessed 2026-09-19 against the obvious alternative, `tail -f` on the reasoning output. For one person, one model, one session, tail wins: a human reads better than any judge and costs nothing. cotwatcher exists for the moment nobody is reading, which arrives at about the tenth trace. It applies the same standard to every trace, acts without a human present, and produces the one thing tailing never can: rates. "Reward hacking on our coding tasks went from 0.4% to 2.1% with the new model version" is instrumentation, and it is the strongest version of the product.
+
+The two honest weaknesses are cost (a second inference per chunk) and trust in the verdict, which is unmeasured today. Both have a mechanism for improving: the eval set grows, the rubric and prompt improve against it, and a trained classifier eventually replaces the LLM judge on common cases, fixing cost at the same time. `tail` is as good as it will ever be on day one; the judge is at its worst on day one.
+
 ## Evidence: the eval set
 
 Six hand-written strings are a smoke test, not evidence that the judge works. An `evals/` directory becomes a first-class part of the repo, holding labeled traces plus a command that runs the judge over them and reports precision and recall per category. It is also the training data for the classifier judge on the backlog.
@@ -67,8 +73,9 @@ First calibration observation (2026-09-19, gpt-oss:20b judge): `deception` fired
 4. Stream tap over a streamed `chat.completions` response; async scoring queue; `watch()` wrapper.
 5. Policy + actions (JSONL log, callback, halt).
 6. CLI: `cotwatcher score traces.jsonl --rubric my.yaml`.
-7. Proxy server: `cotwatcher serve`, OpenAI-compatible, forwards and watches.
-8. README, PyPI packaging, examples against gpt-oss on Ollama and on vLLM.
+7. Aggregate reporting: `cotwatcher report` over logged scores, rates per category grouped by model and task tag, so two model versions can be compared on the same workload.
+8. Proxy server: `cotwatcher serve`, OpenAI-compatible, forwards and watches.
+9. README, PyPI packaging, examples against gpt-oss on Ollama and on vLLM.
 
 ## Housekeeping
 
