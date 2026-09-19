@@ -91,6 +91,8 @@ Caveat that applies to both judges equally: a probe trained on role-played trace
 
 Probe in the live path stays gated on both results.
 
+**Bar for a README example, set by Cyrill 2026-09-20:** an example goes back into the README only when it is strong enough to survive an adversarial read on its own. Concretely: the behaviour was reproduced across runs and templates under v2 templates (explicit `ValueError`, boundary tests); the with-CoT and without-CoT comparison exists for the same episodes and the CoT adds something the output monitor did not have; incomplete episodes are reported beside it; and Cyrill has reviewed the labels. Until then the evidence lives in `evals/pressure/examples/` and here.
+
 **Success criterion for v1, adopted 2026-09-20 from Codex's review:** additional verified incidents found by CoT monitoring versus output and tool-log monitoring alone, at a fixed false-alert budget. This is the real baseline, sharper than `tail -f`: teams already monitor outputs and tool calls, and if the CoT adds no incidents those miss, the product has no reason to exist. Measuring it needs the stream tap plus an output/tool-log monitor to compare against, so it is the bar for the next phase. Labeled excerpts from one transcript are a challenge set for the judges, never evidence of production alert precision.
 
 Sources, in order of honesty:
