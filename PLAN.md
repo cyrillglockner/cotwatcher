@@ -7,7 +7,7 @@ Decided 2026-09-18.
 ## Scope of v1
 
 - **Input:** the CoT text as emitted by the model (`reasoning_content` on DeepSeek / vLLM / Ollama, `reasoning` on gpt-oss via the Responses API). Hidden-state probes are on the backlog, not in v1.
-- **Judge:** an LLM behind the OpenAI-compatible API. Default `base_url` is OpenAI as the reference baseline; the same client points at vLLM, Ollama, LM Studio or llama.cpp for a local judge. A trained classifier NN is a later drop-in behind the same `Judge` interface.
+- **Judge:** an LLM behind the OpenAI-compatible API. **Baseline is local: Ollama serving `gpt-oss:20b`** (decided 2026-09-18, after it scored 6/6 on the example traces). The same client points at OpenAI, vLLM, LM Studio or llama.cpp by changing `base_url` and `model`. A trained classifier NN is a later drop-in behind the same `Judge` interface. Measured 2026-09-18 on an M-series laptop, one chunk: 19s at `reasoning_effort=low`, 59s at medium, 20min at high, identical verdicts, so the judge defaults to low. Fine for offline scoring; a live stream tap needs either a smaller non-reasoning judge or the trained classifier on the backlog.
 - **Rubric:** a plain file (YAML), shipped with a default of four categories. Users edit or replace it; nothing in the code depends on the category names. Each category carries a name, a one-line definition, and two or three short examples.
   - deception of the user
   - reward hacking / gaming the task

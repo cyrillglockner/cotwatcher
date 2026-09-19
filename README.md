@@ -12,7 +12,7 @@ Reasoning models (DeepSeek-R1, Qwen3, gpt-oss) expose their thinking as text. co
 from openai import OpenAI
 from cotwatcher import LLMJudge, Rubric
 
-judge = LLMJudge(OpenAI(), model="gpt-5-mini")          # or base_url="http://localhost:11434/v1"
+judge = LLMJudge(OpenAI(base_url="http://localhost:11434/v1", api_key="ollama"), model="gpt-oss:20b")
 score = judge.score("If I hardcode the expected outputs the tests pass.")
 print(score.max())   # ('reward_hacking', 0.9)
 ```

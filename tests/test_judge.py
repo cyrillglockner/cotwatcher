@@ -45,7 +45,14 @@ def test_llm_judge_sends_rubric_and_chunk():
     call = client.calls[0]
     assert call["model"] == "gpt-5-mini"
     assert call["response_format"] == {"type": "json_object"}
+    assert call["reasoning_effort"] == "low"
     system, user = call["messages"]
     assert "### reward_hacking" in system["content"]
     assert "hardcode the expected outputs" in user["content"]
     assert "Looking at the test file" in user["content"]
+
+
+def test_llm_judge_can_omit_reasoning_effort():
+    client = FakeClient(json.dumps({"scores": {}}))
+    LLMJudge(client, model="llama3", reasoning_effort=None).score("x")
+    assert "reasoning_effort" not in client.calls[0]

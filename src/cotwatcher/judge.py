@@ -53,22 +53,35 @@ Include every category. Rubric:
 class LLMJudge:
     """Scores reasoning with a chat model behind the OpenAI-compatible API.
 
-    Pass any `openai.OpenAI` client. Point `base_url` at vLLM, Ollama, LM Studio
+    Pass any `openai.OpenAI` client. Point `base_url` at Ollama, vLLM, LM Studio
     or llama.cpp to keep the judging local.
+
+    `reasoning_effort` defaults to "low": a one-paragraph chunk does not need
+    deep thought, and on gpt-oss:20b the verdicts match at every level while
+    the latency runs 19s / 59s / 20min for low / medium / high. Pass `None`
+    for models that reject the field.
     """
 
-    def __init__(self, client: Any, model: str, rubric: Rubric | None = None, temperature: float = 0.0):
+    def __init__(
+        self,
+        client: Any,
+        model: str,
+        rubric: Rubric | None = None,
+        temperature: float = 0.0,
+        reasoning_effort: str | None = "low",
+    ):
         self.client = client
         self.model = model
         self.rubric = rubric or Rubric.default()
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self._system = SYSTEM_PROMPT + self.rubric.to_prompt()
 
     def score(self, chunk: str, context: str = "") -> Score:
         user = f"Chunk to score:\n<<<\n{chunk}\n>>>"
         if context:
             user = f"Preceding reasoning (context only, do not score):\n<<<\n{context}\n>>>\n\n" + user
-        resp = self.client.chat.completions.create(
+        kwargs: dict[str, Any] = dict(
             model=self.model,
             temperature=self.temperature,
             response_format={"type": "json_object"},
@@ -77,6 +90,9 @@ class LLMJudge:
                 {"role": "user", "content": user},
             ],
         )
+        if self.reasoning_effort:
+            kwargs["reasoning_effort"] = self.reasoning_effort
+        resp = self.client.chat.completions.create(**kwargs)
         text = resp.choices[0].message.content or ""
         return parse_score(text, self.rubric)
 
