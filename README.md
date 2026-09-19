@@ -68,6 +68,8 @@ uv venv && uv pip install -e ".[dev]"
 .venv/bin/python examples/score_traces.py        # six fixtures through the judge
 ```
 
+The eval results in this README and in `PLAN.md` used DeepSeek-R1-Distill-Qwen-7B at Q4_K_M as the watched model. On Ollama that is `deepseek-r1:7b` (Ollama's `latest` tag has moved to a newer model); `PLAN.md` pins the digest.
+
 ```python
 import cotwatcher
 

@@ -27,6 +27,8 @@ No linter or formatter is configured yet.
 
 ## Conventions
 
+- Nothing under `evals/external/` or derived from it is ever committed. It holds third-party transcripts released with a training-corpus canary; the repo may become public. Generated traces and episodes (`evals/traces/`, `evals/pressure/episodes/`, `evals/probe/cache/`) are gitignored too; only hand-labeled fixtures are tracked.
+
 - Every model call goes through the OpenAI-compatible API so one client covers Ollama, OpenAI, vLLM, LM Studio and llama.cpp. Do not add provider-specific SDKs.
 - Baseline judge is local Ollama with `gpt-oss:20b`. Examples and defaults assume it; hosted models are the override, never the default.
 - Watched model for evals is DeepSeek-R1-Distill-Qwen-7B: `deepseek-r1:latest` on Ollama for text, the HF copy in transformers (MPS) when activations are needed. Ollama cannot expose hidden states.
