@@ -14,7 +14,7 @@ Also true, and the README says so: a well-aligned model on benign tasks produces
 
 ## Scope of v1
 
-- **Input:** the CoT text as emitted by the model (`reasoning_content` on DeepSeek / vLLM / Ollama, `reasoning` on gpt-oss via the Responses API). Hidden-state probes are on the backlog, not in v1.
+- **Input:** the CoT text as emitted by the model (`reasoning_content` on DeepSeek / vLLM / Ollama, `reasoning` on gpt-oss via the Responses API). Hidden-state probes are **evaluated in v1** (decided 2026-09-19, pulled forward from the backlog) but the live stream tap stays text-only until a probe has shown it beats the text judge on the eval set.
 - **Judge:** an LLM behind the OpenAI-compatible API. **Baseline is local: Ollama serving `gpt-oss:20b`** (decided 2026-09-18, after it scored 6/6 on the example traces). The same client points at OpenAI, vLLM, LM Studio or llama.cpp by changing `base_url` and `model`. A trained classifier NN is a later drop-in behind the same `Judge` interface. Measured 2026-09-18 on an M-series laptop, one chunk: 19s at `reasoning_effort=low`, 59s at medium, 20min at high, identical verdicts, so the judge defaults to low. The laptop is the floor, not the target: users run on GPU boxes where the same call is sub-second. Design for that, and treat the laptop number as the worst case the code must survive rather than the case it optimises for.
 - **Rubric:** a plain file (YAML), shipped with a default of **three** categories, chosen for the strongest evidence in the CoT-monitoring literature and the best odds of eliciting them on open models. Users edit or replace it; nothing in the code depends on the category names. Each category carries a name, a definition, and a few examples written as a benign task going wrong.
   - deception: works out one thing, plans to tell the user another
@@ -52,9 +52,15 @@ Assessed 2026-09-19 against the obvious alternative, `tail -f` on the reasoning 
 
 The two honest weaknesses are cost (a second inference per chunk) and trust in the verdict, which is unmeasured today. Both have a mechanism for improving: the eval set grows, the rubric and prompt improve against it, and a trained classifier eventually replaces the LLM judge on common cases, fixing cost at the same time. `tail` is as good as it will ever be on day one; the judge is at its worst on day one.
 
-## Evidence: the eval set
+## Evidence: the eval set, and the probe experiment
 
-Six hand-written strings are a smoke test, not evidence that the judge works. An `evals/` directory becomes a first-class part of the repo, holding labeled traces plus a command that runs the judge over them and reports precision and recall per category. It is also the training data for the classifier judge on the backlog.
+Six hand-written strings are a smoke test, not evidence that the judge works. An `evals/` directory becomes a first-class part of the repo, holding labeled traces plus a command that runs the judge over them and reports precision and recall per category. It is also the training data for the classifier judge on the backlog and for the probes below.
+
+**Watched model for evals: DeepSeek-R1-Distill-Qwen-7B**, decided 2026-09-19. Same weights on both paths: Ollama (`deepseek-r1:latest`) serves it for text-only traces, the Hugging Face copy runs in transformers on MPS for traces that also carry activations. The most studied small reasoning model, canonical `<think>` format, and as a distill with less RLHF polish it misbehaves more readily than newer models, which is what we want here. ~15 GB fp16, fits the 24 GB M2 with short generations; its CoT runs long, so cap tokens. gpt-oss:20b stays the judge. gpt-oss as a *watched* model with hooks needs a GPU box (40 GB bf16 or Triton kernels), which is where users will be anyway.
+
+**Hidden-state probes.** Ollama exposes text only, so activations require the model in our process. The recipe is Apollo's *Detecting Strategic Deception Using Linear Probes* (2025) and Anthropic's sleeper-agent probe work: residual stream at a middle-to-late layer, mean-pooled over the chunk, logistic regression or mean-difference direction fit on labeled examples, AUROC on held-out traces. A few hundred examples, no model training. The trace generator stores pooled activations at a handful of layers as `.npy` beside the JSONL, so both judges evaluate on the same traces. That side-by-side (text judge vs. linear probe, same open model, same eval set) is a result nobody has published, and it decides whether probes enter the live path.
+
+Caveat that applies to both judges equally: a probe trained on role-played traces learns to detect role-play. Honeypot tasks where the model misbehaves for real are worth more than a thousand synthetic examples.
 
 Sources, in order of honesty:
 
@@ -69,7 +75,10 @@ First calibration observation (2026-09-19, gpt-oss:20b judge): `deception` fired
 
 1. `Judge` interface + `LLMJudge` + default rubric + tests with canned traces. Done 2026-09-18.
 2. Config: `cotwatcher.toml` + env overrides, endpoints for model and judge. Done 2026-09-19.
-3. Eval harness: `evals/` with labeled traces (honeypot runs, published transcripts, synthetic), `cotwatcher eval` reporting precision/recall per category. Comes before the stream tap because it is the only way to know the judge works.
+3. Eval harness, in three parts:
+   a. Trace generator against R1-Distill-Qwen-7B: honeypot tasks, text via Ollama, text plus pooled activations via transformers. Every trace carries model name and task tag from the start (step 7 groups by them).
+   b. Labeling and `cotwatcher eval`: precision/recall per category for the LLM judge.
+   c. Linear probe on the activations, AUROC on held-out traces, reported beside the judge. Comes before the stream tap because it is the only way to know either judge works.
 4. Stream tap over a streamed `chat.completions` response; async scoring queue; `watch()` wrapper.
 5. Policy + actions (JSONL log, callback, halt).
 6. CLI: `cotwatcher score traces.jsonl --rubric my.yaml`.
