@@ -1,5 +1,11 @@
 # Backlog
 
+- **OpenClaw as the reference deployment for the proxy (2026-09-20).** People running OpenClaw locally on an open-weight model want to know the agent is not going off the reservation. Fit: point OpenClaw's model endpoint at `cotwatcher serve`, which forwards to the real Ollama/vLLM; zero changes to OpenClaw, same-box topology, nothing leaves the machine. Slots into OpenClaw's E5 (monitoring/audit) beside E3 (policy engine): the policy engine sees the tool call, cotwatcher sees the reasoning that produced it, and only the reasoning separates "send the email" from "send it because the user would refuse if asked." Three design consequences to carry into the stream tap and proxy steps:
+  1. **Agent-aware halt.** In an agent loop the dangerous part is the tool call at the end of the reasoning. The proxy must hold the tool-call portion of the response until the verdict on the reasoning lands, then release or block it. Stronger than "stop the stream when the verdict arrives."
+  2. **An agent rubric**, shipped as a separate file, not a change to the default three: deception and oversight_evasion as-is, reward_hacking framed as completing the task by a route the user would not sanction, plus acting outside granted scope.
+  3. **Local reasoning model required.** Hosted models with hidden reasoning leave cotwatcher blind; document this as the constraint and the reason the open-weight configuration is the one that can be monitored.
+  OpenClaw's tool log is also the natural "output/tool-log monitoring" baseline for the v1 success criterion.
+
 - **PyPI release, when `watch()` exists.** Publish `cotwatcher` 0.1.0a1 as the first install that does the headline job; register `cot-watcher` as an alias depending on it. Cyrill creates the PyPI account (2FA); use Trusted Publishing from a GitHub Actions release workflow rather than an API token; rehearse on TestPyPI. Name confirmed free 2026-09-18. Decided 2026-09-20 not to hold the name with a placeholder.
 
 - **Output/tool-log monitoring baseline.** Needed to measure the v1 success criterion (incidents found beyond what output and tool-log monitoring catch, at a fixed false-alert budget). A simple monitor over final answers and tool calls using the same rubric, run on the same traffic as the CoT monitor.
