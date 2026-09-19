@@ -7,13 +7,19 @@ Decided 2026-09-18.
 ## Scope of v1
 
 - **Input:** the CoT text as emitted by the model (`reasoning_content` on DeepSeek / vLLM / Ollama, `reasoning` on gpt-oss via the Responses API). Hidden-state probes are on the backlog, not in v1.
-- **Judge:** an LLM behind the OpenAI-compatible API. **Baseline is local: Ollama serving `gpt-oss:20b`** (decided 2026-09-18, after it scored 6/6 on the example traces). The same client points at OpenAI, vLLM, LM Studio or llama.cpp by changing `base_url` and `model`. A trained classifier NN is a later drop-in behind the same `Judge` interface. Measured 2026-09-18 on an M-series laptop, one chunk: 19s at `reasoning_effort=low`, 59s at medium, 20min at high, identical verdicts, so the judge defaults to low. Fine for offline scoring; a live stream tap needs either a smaller non-reasoning judge or the trained classifier on the backlog.
+- **Judge:** an LLM behind the OpenAI-compatible API. **Baseline is local: Ollama serving `gpt-oss:20b`** (decided 2026-09-18, after it scored 6/6 on the example traces). The same client points at OpenAI, vLLM, LM Studio or llama.cpp by changing `base_url` and `model`. A trained classifier NN is a later drop-in behind the same `Judge` interface. Measured 2026-09-18 on an M-series laptop, one chunk: 19s at `reasoning_effort=low`, 59s at medium, 20min at high, identical verdicts, so the judge defaults to low. The laptop is the floor, not the target: users run on GPU boxes where the same call is sub-second. Design for that, and treat the laptop number as the worst case the code must survive rather than the case it optimises for.
 - **Rubric:** a plain file (YAML), shipped with a default of four categories. Users edit or replace it; nothing in the code depends on the category names. Each category carries a name, a one-line definition, and two or three short examples.
   - deception of the user
   - reward hacking / gaming the task
   - harmful intent
   - instruction subversion (planning to ignore the system prompt or tool rules)
-- **Shape:** library first. `cotwatcher.watch(client)` wraps an OpenAI-compatible client, intercepts the reasoning stream, chunks it, scores chunks against the rubric, and dispatches actions. A CLI scores transcript files offline using the same core. A proxy server (local OpenAI-compatible endpoint that forwards and watches) is v1.1, a thin FastAPI layer over the library.
+- **Shape:** library first, proxy in v1 on top of it. `cotwatcher.watch(client)` wraps an OpenAI-compatible client, intercepts the reasoning stream, chunks it, scores chunks against the rubric, and dispatches actions. A CLI scores transcript files offline using the same core. The proxy (an OpenAI-compatible endpoint that forwards to the real inference server and watches the stream) is a thin FastAPI layer over the library, and it is the deployment story for anyone who wants zero code change: install beside the inference server, point the app at cotwatcher.
+- **Topology:** cotwatcher runs wherever the user puts it, and both endpoints are configured URLs, never assumed local or assumed to be the same server. Three layouts to support without special cases:
+  - *Same box as inference.* Judge and watched model both on `localhost`, possibly one vLLM instance serving both roles. No CoT leaves the machine.
+  - *Sidecar VM.* cotwatcher on its own VM in front of the inference server; judge co-located with cotwatcher or a third endpoint.
+  - *Workstation against remote inference.* Model remote, judge local or remote.
+  Config is a small file (`cotwatcher.toml`) plus env overrides (`COTWATCHER_MODEL_URL`, `COTWATCHER_JUDGE_URL`, `COTWATCHER_JUDGE_MODEL`, and so on), read once at startup.
+- **Scoring is asynchronous.** Generation never waits on the judge. Chunks go to a queue, verdicts come back when they come back, and `halt` means "stop the stream when the verdict lands," never "hold tokens until cleared." This is the right shape at any judge speed.
 - **On flag:** default is log and continue. Halting the stream is opt-in per category threshold. A false positive that kills a generation costs more than a missed log line at this stage.
 
 ## Architecture
@@ -33,12 +39,13 @@ Chunking: score on sentence or paragraph boundaries with a rolling window of the
 
 ## Build order
 
-1. `Judge` interface + `LLMJudge` + default rubric + tests with canned traces.
-2. Stream tap over a streamed `chat.completions` response; `watch()` wrapper.
-3. Policy + actions (JSONL log, callback, halt).
-4. CLI: `cotwatcher score traces.jsonl --rubric my.yaml`.
-5. README, PyPI packaging, examples against DeepSeek-R1 on Ollama and gpt-oss on vLLM.
-6. v1.1: proxy server.
+1. `Judge` interface + `LLMJudge` + default rubric + tests with canned traces. Done 2026-09-18.
+2. Config: `cotwatcher.toml` + env overrides, endpoints for model and judge.
+3. Stream tap over a streamed `chat.completions` response; async scoring queue; `watch()` wrapper.
+4. Policy + actions (JSONL log, callback, halt).
+5. CLI: `cotwatcher score traces.jsonl --rubric my.yaml`.
+6. Proxy server: `cotwatcher serve`, OpenAI-compatible, forwards and watches.
+7. README, PyPI packaging, examples against gpt-oss on Ollama and on vLLM.
 
 ## Housekeeping
 
