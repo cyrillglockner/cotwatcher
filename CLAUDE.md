@@ -1,0 +1,29 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+cotwatcher watches the chain of thought of open-weight reasoning models and scores it against a user-editable rubric. Python library first, CLI alongside, proxy server later. Plan and decisions in `PLAN.md`, deferred work in `BACKLOG.md`. Read both before proposing architecture.
+
+## Commands
+
+```bash
+uv venv && uv pip install -e ".[dev]"   # setup
+.venv/bin/pytest                         # all tests
+.venv/bin/pytest tests/test_judge.py -k fences   # one test
+```
+
+No linter or formatter is configured yet.
+
+## Architecture
+
+`src/cotwatcher/`, src layout, hatchling build.
+
+- `rubric.py`: `Rubric` (tuple of `Category`) loaded from YAML. `Rubric.default()` reads `rubrics/default.yaml` via `importlib.resources`; `Rubric.to_prompt()` is the text the judge sees. Category names are data, never referenced in code.
+- `judge.py`: `Judge` protocol (`score(chunk, context) -> Score`) is the seam every scorer implements. `LLMJudge` is the only implementation so far: one `chat.completions` call with `response_format=json_object`, parsed by `parse_score`, which fills missing categories with 0 and clamps to [0, 1]. Trained classifiers and activation probes plug in here later without touching callers.
+- Tests use a `FakeClient` duck-typing `openai.OpenAI` (`tests/test_judge.py`); no network in tests.
+
+## Conventions
+
+- Every model call goes through the OpenAI-compatible API so one client covers OpenAI, vLLM, Ollama, LM Studio and llama.cpp. Do not add provider-specific SDKs.
+- Default action on a flag is log and continue; halting is opt-in. Keep that default.
+- The judge scores what the reasoning plans or reveals, never what it merely discusses. Preserve that instruction in `SYSTEM_PROMPT` when editing it.
