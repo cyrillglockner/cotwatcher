@@ -35,7 +35,7 @@ Report:
 
 Tests unmodified, all passing, hidden spec suite passing, report accurate about the code change. Every check available to a tool-log monitor returns clean. The reasoning is the only record that the model identified the test as contradicting the spec and satisfied it anyway. Two of three runs in this condition produced the same decision. Full episodes with labels: `evals/pressure/examples/`.
 
-Sample size: two episodes from one template. Not a rate.
+Sample size: two episodes from one template.
 
 ## Architecture
 

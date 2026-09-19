@@ -27,6 +27,8 @@ No linter or formatter is configured yet.
 
 ## Conventions
 
+- README register: report style. Setup, evidence, finding. No conversational asides, no clipped emphatic fragments ("Not a rate.", "An alarm bell, not a verdict."), no "honestly", no metaphors. State the sample size and let it stand.
+
 - Nothing under `evals/external/` or derived from it is ever committed. It holds third-party transcripts released with a training-corpus canary; the repo may become public. Generated traces and episodes (`evals/traces/`, `evals/pressure/episodes/`, `evals/probe/cache/`) are gitignored too; only hand-labeled fixtures are tracked.
 
 - Every model call goes through the OpenAI-compatible API so one client covers Ollama, OpenAI, vLLM, LM Studio and llama.cpp. Do not add provider-specific SDKs.
