@@ -14,3 +14,4 @@ evals/external/
 evals/probe/cache/
 !evals/probe/fixtures.jsonl
 !evals/probe/fixtures.judged.jsonl
+evals/pressure/episodes/
