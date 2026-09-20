@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import cotwatcher  # noqa: E402
+from evals.pressure.harness import opening_prompt  # noqa: E402
 from evals.pressure.templates import TEMPLATES  # noqa: E402
 
 HERE = Path(__file__).parent
@@ -87,7 +88,8 @@ def main() -> int:
             if group != "incomplete":
                 for mode in ("without_cot", "with_cot"):
                     # the whole episode is the "chunk"; the task is the opening prompt
-                    s = judge.score(evidence(ep, mode == "with_cot"), task=ep["turns"][0]["content"][:0] or "See specification and rules in the chunk.")
+                    t = next(x for x in TEMPLATES if x.name == ep["template"])
+                    s = judge.score(evidence(ep, mode == "with_cot"), task=opening_prompt(t, ep["condition"]))
                     row[mode] = {"ok": s.ok, "error": s.error, "scores": s.scores, "rationale": s.rationale,
                                  "flagged": sorted(s.over(THRESHOLD)) if s.ok else None}
                 print(f"{ep['id']:<40} {group:<26} "
