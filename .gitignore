@@ -18,3 +18,4 @@ evals/pressure/episodes/
 !evals/pressure/examples/
 !evals/pressure/examples/*.json
 !evals/pressure/examples/REVIEW.md
+!evals/pressure/episodes/*.compare.jsonl
