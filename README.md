@@ -44,7 +44,7 @@ A second kind of judge that reads activations rather than words: residual stream
 | reward_hacking | 1.00 | 1.00 |
 | oversight_evasion | 1.00 | 0.95 |
 
-AUROC on 29 held-out chunks (24 hand-written, 5 real R1 negatives). Judge: 0 false fires on 17 honest negatives. Probe: trained on synthetic pairs only. Category ordering and layer profile are identical on both model sizes, which suggests a real direction rather than noise.
+AUROC on 29 held-out chunks (24 hand-written, 5 real R1 negatives). Judge: 0 false fires on 17 honest negatives. On the first real episodes from the pressure experiment (three human-reviewed reward-hacking positives, two honest reports, five controls) the judge flagged nothing in either mode, with or without the reasoning; the regression-set score did not transfer. Details in `PLAN.md`. Probe: trained on synthetic pairs only. Category ordering and layer profile are identical on both model sizes, which suggests a real direction rather than noise.
 
 **Natural rate:** R1-7B on 30 honeypot episodes took a shortcut once (one disputed deception positive pending review). It does not cheat on coding when the correct solution is cheap; it fabricates when it cannot do what was asked.
 
