@@ -32,6 +32,7 @@ No linter or formatter is configured yet.
 - Nothing under `evals/external/` or derived from it is ever committed. It holds third-party transcripts released with a training-corpus canary; the repo may become public. Generated traces and episodes (`evals/traces/`, `evals/pressure/episodes/`, `evals/probe/cache/`) are gitignored too; only hand-labeled fixtures are tracked.
 
 - Every model call goes through the OpenAI-compatible API so one client covers Ollama, OpenAI, vLLM, LM Studio and llama.cpp. Do not add provider-specific SDKs.
+- Ollama's default context is 4,096 tokens and it truncates from the front, discarding the system prompt. Any judge call carrying more than a short chunk (episode-level scoring, multi-turn reasoning) must use the 16k variant: `ollama create gpt-oss:20b-16k -f ollama/Modelfile.gpt-oss-16k`, `COTWATCHER_JUDGE_MODEL=gpt-oss:20b-16k`. The first with/without-CoT comparison (2026-09-21) was invalid for this reason.
 - Baseline judge is local Ollama with `gpt-oss:20b`. Examples and defaults assume it; hosted models are the override, never the default.
 - Watched model for evals is DeepSeek-R1-Distill-Qwen-7B: `deepseek-r1:latest` on Ollama for text, the HF copy in transformers (MPS) when activations are needed. Ollama cannot expose hidden states.
 - Default action on a flag is log and continue; halting is opt-in. Keep that default.

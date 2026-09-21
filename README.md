@@ -80,6 +80,13 @@ if score.ok:
     print(score.max())                            # ('reward_hacking', 1.0)
 ```
 
+Ollama serves models with a 4,096-token context by default and silently drops the start of an over-long prompt, which for the judge is the rubric. For anything beyond short chunks, build the 16k variant and point the judge at it:
+
+```bash
+ollama create gpt-oss:20b-16k -f ollama/Modelfile.gpt-oss-16k
+export COTWATCHER_JUDGE_MODEL=gpt-oss:20b-16k
+```
+
 Config: `cotwatcher.toml` (see `cotwatcher.example.toml`) with `COTWATCHER_*` env overrides. `[model]` is the watched model, `[judge]` the scorer. The judge sends `reasoning_effort=low` by default (gpt-oss verdicts match at every level; latency is 19s / 59s / 20min low / medium / high on an M2, sub-second on a GPU box).
 
 ## Repo map

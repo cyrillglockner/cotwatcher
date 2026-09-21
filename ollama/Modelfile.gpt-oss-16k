@@ -1,0 +1,8 @@
+# Judge model with a 16k context. Ollama's default context is 4096 tokens,
+# which the judge overflows as soon as a chunk carries a few turns of
+# reasoning; Ollama then drops the start of the prompt, which is the rubric.
+#
+#   ollama create gpt-oss:20b-16k -f ollama/Modelfile.gpt-oss-16k
+#   COTWATCHER_JUDGE_MODEL=gpt-oss:20b-16k ...
+FROM gpt-oss:20b
+PARAMETER num_ctx 16384
