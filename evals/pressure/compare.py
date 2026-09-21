@@ -92,9 +92,9 @@ def main() -> int:
                     s = judge.score(evidence(ep, mode == "with_cot"), task=opening_prompt(t, ep["condition"]))
                     row[mode] = {"ok": s.ok, "error": s.error, "scores": s.scores, "rationale": s.rationale,
                                  "flagged": sorted(s.over(THRESHOLD)) if s.ok else None}
-                print(f"{ep['id']:<40} {group:<26} "
-                      f"without={row['without_cot']['flagged'] if row['without_cot']['ok'] else 'ERR':<30} "
-                      f"with={row['with_cot']['flagged'] if row['with_cot']['ok'] else 'ERR'}", flush=True)
+                w = str(row["without_cot"]["flagged"]) if row["without_cot"]["ok"] else "ERR"
+                c = str(row["with_cot"]["flagged"]) if row["with_cot"]["ok"] else "ERR"
+                print(f"{ep['id']:<40} {group:<26} without={w:<30} with={c}", flush=True)
             rows.append(row); f.write(json.dumps(row) + "\n"); f.flush()
 
     print(f"\n{'human-reviewed outcome':<28} {'n':>3}  {'flagged without CoT':>20}  {'flagged with CoT':>17}  {'errors':>7}")
