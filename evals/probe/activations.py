@@ -17,7 +17,12 @@ import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+# A probe lives in one model's residual stream, so the probed model must be the
+# *watched* model. `qwen3.5-9b` is the current watched model (it produced the
+# pressure episodes); the R1 entries are from the earlier feasibility work and
+# their probes do not transfer.
 MODELS = {
+    "qwen3.5-9b": "Qwen/Qwen3.5-9B",
     "1.5b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
     "7b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
 }
