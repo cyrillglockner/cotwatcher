@@ -5,8 +5,6 @@
 cotwatcher captures your model's chain of thought and scores it against a rubric you control. Both the model being watched and the model doing the scoring are ordinary OpenAI-compatible endpoints, so everything runs locally against Ollama, vLLM, LM Studio or llama.cpp, and no reasoning leaves your machine.
 
 ```bash
-pip install cotwatcher
-
 cotwatcher trace tasks.txt -o traces.jsonl        # run your model, capture its reasoning
 cotwatcher score traces.jsonl                     # score that reasoning against a rubric
 ```
@@ -14,6 +12,25 @@ cotwatcher score traces.jsonl                     # score that reasoning against
 It also ships the experiments for the question that comes next: whether that scoring catches anything real on *your* model. It did not catch everything on ours, and that result is in Status below.
 
 **What installs today:** capturing and scoring saved traces, offline. **Not built yet:** watching a live stream, enforcing a policy, halting a generation, the proxy.
+
+### What you need first
+
+Python 3.11+, and **a model server that is actually running**. Both commands call one: `trace` calls the model being watched, `score` calls the model doing the scoring. Nothing is bundled.
+
+If you have no server yet, [Ollama](https://ollama.com) is the shortest path. Its default port is what cotwatcher assumes, so this works with no config file:
+
+```bash
+pip install cotwatcher
+
+ollama serve &                 # if it is not already running
+ollama pull qwen3:8b           # ~5 GB, the model to watch: any model that emits a chain of thought
+ollama pull gpt-oss:20b        # ~13 GB, the judge
+
+export COTWATCHER_MODEL=qwen3:8b
+cotwatcher check               # confirms the judge answers before you spend time on traces
+```
+
+Already running vLLM, LM Studio, llama.cpp or a hosted API? Point cotwatcher at it instead; see step 1. Nothing here requires Ollama.
 
 ## The flow
 
@@ -41,6 +58,8 @@ cotwatcher check        # confirms the judge answers, and scores a known bad chu
                         # find out immediately whether it flags something it should
 ```
 
+`check` contacts the judge only. It prints the watched model's endpoint without calling it, so it works before you have that side set up.
+
 ### 2. Capture reasoning
 
 Write the tasks you care about, one per blank-line-separated block (or a `.jsonl` with a `task` field), then:
@@ -50,14 +69,20 @@ cotwatcher trace tasks.txt -o traces.jsonl
 ```
 
 ```
-4 task(s) -> qwen3:8b @ http://localhost:11434/v1
+3 task(s) -> qwen3:8b @ http://localhost:11434/v1
 
-  1. ok      reasoning   2431 chars, answer   1088 chars
-  2. ok      reasoning   1876 chars, answer    942 chars
-  3. NO CoT  reasoning      0 chars, answer    310 chars
+  1. ok      reasoning   5501 chars, answer   2605 chars
+  2. ok      reasoning   2366 chars, answer    825 chars
+  3. ok      reasoning   1420 chars, answer    150 chars
+
+wrote traces.jsonl: 3 with reasoning, 0 without, 0 failed
 ```
 
-`trace` finds the reasoning wherever your server puts it: `reasoning` on Ollama, `reasoning_content` on vLLM and DeepSeek, or `<think>` tags inside the content. If a response carries no chain of thought it says so rather than silently writing an empty trace, because a model that shows nothing cannot be watched this way.
+`examples/tasks.txt` holds those three, and they take a few minutes on a laptop. Reasoning models are slow, and a task that invites a long deliberation can take much longer.
+
+A model that emits no chain of thought is reported as `NO CoT` rather than written out as an empty trace.
+
+`trace` finds the reasoning wherever your server puts it: `reasoning` on Ollama, `reasoning_content` on vLLM and DeepSeek, or `<think>` tags inside the content. A model that shows nothing cannot be watched this way, so that case is called out rather than passed over.
 
 Already have traces from your own pipeline? Skip this step. The format is one JSON object per line with a `reasoning` field, plus optional `task`, `context` and `id`. `examples/traces.jsonl` is a six-chunk sample.
 
