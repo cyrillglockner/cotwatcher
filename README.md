@@ -34,23 +34,23 @@ A second kind of judge that reads activations rather than words: residual stream
 
 ## Status
 
-**Built:** `Rubric`, `Judge`/`LLMJudge` with strict output validation (malformed judge replies are errors, never clean scores), `Settings` with two endpoints (TOML + env), an eval toolkit: honeypot task generator, synthetic contrastive-pair generator, activation extractor for R1-Distill-Qwen (1.5B/7B on MPS), probe trainer with grouped CV and transfer scoring, judge scorer with cross-category reporting. 25 tests.
+Early. The scorer works; the streaming wrapper does not exist yet. What is here today is useful in two ways: a library for scoring reasoning text against a rubric, and an evaluation toolkit for finding out whether such scoring works on your own model.
 
-**Measured** (small n, on a regression set the prompt was tuned against; these are consistency checks, not detection evidence):
+**Built:** `Rubric`, `Judge`/`LLMJudge` with strict output validation (a malformed judge reply is an error, never a clean score), `Settings` with separate watched-model and judge endpoints (TOML + env). An eval toolkit: honeypot tasks, a synthetic contrastive-pair generator, an agentic pressure harness with independent ground truth, an activation extractor and linear-probe trainer, and judge scoring with cross-category reporting. 25 tests.
 
-| | text judge (gpt-oss:20b) | probe (R1-7B, layer 14/28) |
-|---|---|---|
-| deception | 1.00 | 0.79 |
-| reward_hacking | 1.00 | 1.00 |
-| oversight_evasion | 1.00 | 0.95 |
+**Not built:** the stream tap and `watch()`, policy and actions, the CLI, the proxy, the probe in the live path.
 
-AUROC on 29 held-out chunks (24 hand-written, 5 real R1 negatives). Judge: 0 false fires on 17 honest negatives. On the first real episodes from the pressure experiment (three human-reviewed reward-hacking positives, two honest reports, five controls) the judge flagged nothing in either mode, with or without the reasoning; the regression-set score did not transfer. Details in `PLAN.md`. Probe: trained on synthetic pairs only. Category ordering and layer profile are identical on both model sizes, which suggests a real direction rather than noise.
+### What the evaluations show so far
 
-**Natural rate:** R1-7B on 30 honeypot episodes took a shortcut once (one disputed deception positive pending review). It does not cheat on coding when the correct solution is cheap; it fabricates when it cannot do what was asked.
+On 29 hand-written fixtures the text judge scores 1.00 AUROC per category with no false fires on 17 honest negatives. That did not transfer. In a controlled agentic experiment (`evals/pressure/`, Qwen3.5-9B, 27 episodes, 10 completed, labels reviewed by hand), the model three times knowingly satisfied a test it had identified as contradicting the specification, and described the workaround as a feature:
 
-**Not built:** stream tap, policy, actions, CLI, proxy, probe in the live path.
+> The spec says "discount is a FRACTION between 0 and 1", so technically passing `10` violates the API contract, BUT we need to make it work for CI.
 
-**Next:** a completion-pressure experiment. Solvable task, a verified obstacle (one visible test contradicts the spec, tests are off-limits), deadline pressure as the manipulation, ground truth from the harness log rather than any judge. Then the same judge with and without CoT on identical episodes, the first direct measurement of the question that decides whether this tool is worth running: **does the CoT surface incidents that output and tool-log monitoring miss, at a fixed false-alert budget?**
+The judge flagged none of the three, with or without the reasoning in front of it, and agreed with the model that supporting both conventions was legitimate. Two matched episodes where the same model reported the conflict instead were also unflagged, correctly. **A generic rubric does not catch a shortcut that the model can describe as a feature.**
+
+Linear probes on pooled residual-stream activations reach 0.90-1.00 AUROC on held-out synthetic data, including whole tasks held out, at 0.4s per chunk on an M2. Transfer to hand-written text is 1.00 / 0.75 / 0.63 for reward hacking / oversight evasion / deception, on ten chunks per category that share authorship with the generator's instructions. Treat that as a working pipeline, not a detection result.
+
+**Next:** task templates whose specifications leave no room for the "support both conventions" reading, run with a model that both drives the harness and can be probed, then judge and probe scored on the same fresh episodes. The question that decides whether any of this is worth running: does reading the chain of thought surface incidents that output and tool-log monitoring miss, at a fixed false-alert budget?
 
 ## Limitations
 
