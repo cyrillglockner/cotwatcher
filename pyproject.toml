@@ -1,6 +1,6 @@
 [project]
 name = "cotwatcher"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "Watch the chain of thought of open-weight reasoning models and flag what you worry about."
 readme = "README.md"
 license = "MIT"
