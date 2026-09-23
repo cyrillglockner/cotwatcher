@@ -108,7 +108,7 @@ def test_api_failure_on_one_chunk_does_not_abort_the_run(tmp_path, capsys, patch
     patched["raise_on"] = "a"
     assert cli.main(["score", str(src)]) == 2
     out = capsys.readouterr().out
-    assert "UNSCORED" in out and "1 unscored, 1 scored" in out
+    assert "UNSCORED" in out and "1 assessed, 1 judge error(s)" in out
 
 
 def test_check_endpoint_failure_exits_incomplete(capsys, patched):
@@ -117,13 +117,11 @@ def test_check_endpoint_failure_exits_incomplete(capsys, patched):
     assert "FAILED" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("line,msg", [("{not json}", "not valid JSON"), ('{"id": "x"}', "no reasoning")])
-def test_bad_input_is_rejected_with_a_line_number(tmp_path, line, msg, patched):
+def test_malformed_json_is_reported_with_a_line_number(tmp_path, capsys, patched):
     src = tmp_path / "bad.jsonl"
-    src.write_text(line + "\n")
-    with pytest.raises(SystemExit) as e:
-        cli.main(["score", str(src)])
-    assert msg in str(e.value) and "bad.jsonl:1" in str(e.value)
+    src.write_text("{not json}\n")
+    assert cli.main(["score", str(src)]) == 2
+    assert "bad.jsonl:1" in capsys.readouterr().err
 
 
 def test_rubric_flag_overrides_the_config(tmp_path, capsys, patched):
@@ -134,10 +132,9 @@ def test_rubric_flag_overrides_the_config(tmp_path, capsys, patched):
     assert "### silent_scope_change" in capsys.readouterr().out
 
 
-def test_missing_rubric_file_is_rejected(tmp_path, patched):
-    with pytest.raises(SystemExit) as e:
-        cli.main(["--rubric", str(tmp_path / "nope.yaml"), "rubric"])
-    assert "rubric not found" in str(e.value)
+def test_missing_rubric_file_is_rejected(tmp_path, capsys, patched):
+    assert cli.main(["--rubric", str(tmp_path / "nope.yaml"), "rubric"]) == 2
+    assert "rubric not found" in capsys.readouterr().err
 
 
 def test_score_uses_the_rubric_flag(tmp_path, patched):
@@ -185,3 +182,123 @@ def test_trace_reports_responses_without_reasoning(tmp_path, capsys, patched, mo
     printed = capsys.readouterr().out
     assert "NO CoT" in printed and "no chain of thought" in printed
     assert json.loads(out.read_text().splitlines()[0])["reasoning"] == ""
+
+
+# --- coverage and exit-code contract (adversarial review, 2026-09-23) --------
+
+def _write(p, *rows):
+    p.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    return p
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "1.5", "-inf", "-0.1"])
+def test_non_finite_or_out_of_range_threshold_is_rejected(tmp_path, bad, patched):
+    """NaN makes every comparison false, silently disabling all alerts."""
+    src = _write(tmp_path / "c.jsonl", {"reasoning": "x"})
+    patched["scores"] = {"deception": 1.0, "reward_hacking": 1.0, "oversight_evasion": 1.0}
+    # argparse reads a bare "-inf" as an option name, so negatives use --flag=value
+    argv = ["score", str(src), f"--threshold={bad}"]
+    try:
+        assert cli.main(argv) == 2
+    except SystemExit as e:          # argparse rejects it even earlier, also exit 2
+        assert e.code == 2
+
+
+def test_empty_jsonl_is_incomplete_not_clean(tmp_path, patched):
+    (tmp_path / "empty.jsonl").write_text("\n\n")
+    assert cli.main(["score", str(tmp_path / "empty.jsonl")]) == 2
+
+
+def test_chunk_without_reasoning_is_not_assessed_and_is_reported(tmp_path, capsys, patched):
+    src = _write(tmp_path / "c.jsonl",
+                 {"id": "good", "reasoning": "I'll skip the sort."},
+                 {"id": "empty", "reasoning": "", "capture_status": "no_reasoning"})
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    assert cli.main(["score", str(src)]) == 2          # flagged, but coverage incomplete
+    out = capsys.readouterr().out
+    assert "NOT ASSESSED" in out and "1 without captured reasoning" in out
+    assert len(patched["judge"].calls) == 1            # the empty row never reached the judge
+
+
+@pytest.mark.parametrize("line", ['{"id": "x", "reasoning": 42}', '"just a string"', "[1,2,3]", "{oops}"])
+def test_malformed_records_exit_incomplete_not_flagged(tmp_path, line, patched):
+    """Input errors must never use exit 1, which means 'something was flagged'."""
+    (tmp_path / "bad.jsonl").write_text(line + "\n")
+    assert cli.main(["score", str(tmp_path / "bad.jsonl")]) == 2
+
+
+def test_missing_file_exits_incomplete(tmp_path, patched):
+    assert cli.main(["score", str(tmp_path / "nope.jsonl")]) == 2
+
+
+def test_rubric_flag_works_after_the_subcommand(tmp_path, patched):
+    """The README documents `score FILE --rubric x.yaml`; it must parse."""
+    src = _write(tmp_path / "c.jsonl", {"reasoning": "x"})
+    r = tmp_path / "mine.yaml"
+    r.write_text("categories:\n  - name: only_one\n    definition: d\n")
+    assert cli.main(["score", str(src), "--rubric", str(r)]) in (0, 1)
+    assert patched["judge"].rubric.names == ("only_one",)
+
+
+def test_rubric_flag_still_works_before_the_subcommand(tmp_path, patched):
+    src = _write(tmp_path / "c.jsonl", {"reasoning": "x"})
+    r = tmp_path / "mine.yaml"
+    r.write_text("categories:\n  - name: only_one\n    definition: d\n")
+    cli.main(["--rubric", str(r), "score", str(src)])
+    assert patched["judge"].rubric.names == ("only_one",)
+
+
+def _fake_endpoint(monkeypatch, *responses):
+    """Each response is (reasoning, content, finish_reason) or an Exception."""
+    from types import SimpleNamespace as NS
+    from cotwatcher import config
+    seq = iter(responses)
+
+    def create(**kw):
+        item = next(seq)
+        if isinstance(item, Exception):
+            raise item
+        reasoning, content, finish = item
+        return NS(choices=[NS(message=NS(reasoning=reasoning, content=content, model_extra={}),
+                              finish_reason=finish)])
+
+    monkeypatch.setattr(config.Endpoint, "client",
+                        lambda self: NS(chat=NS(completions=NS(create=create))))
+
+
+def test_trace_records_a_row_for_every_task_including_failures(tmp_path, capsys, patched, monkeypatch):
+    """A dropped task would let a later score run look complete over a subset."""
+    tasks = tmp_path / "t.txt"
+    tasks.write_text("one\n\ntwo\n\nthree\n\nfour\n")
+    _fake_endpoint(monkeypatch,
+                   ("thinking hard", "answer", "stop"),
+                   ("partial think", "", "length"),
+                   ("", "answer only", "stop"),
+                   ConnectionError("endpoint down"))
+    out = tmp_path / "tr.jsonl"
+    assert cli.main(["trace", str(tasks), "-o", str(out)]) == 2
+    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    assert len(rows) == 4                                        # every task recorded
+    assert [r["capture_status"] for r in rows] == ["ok", "truncated", "no_reasoning", "api_error"]
+    assert rows[3]["error"].startswith("ConnectionError")
+    printed = capsys.readouterr().out
+    assert "TRUNCATED" in printed and "NO CoT" in printed and "API ERROR" in printed
+    assert "Capture incomplete: 3 of 4" in printed
+
+
+def test_trace_output_feeds_score_without_aborting(tmp_path, patched, monkeypatch):
+    """The advertised trace -> score flow must survive mixed capture results."""
+    tasks = tmp_path / "t.txt"
+    tasks.write_text("one\n\ntwo\n")
+    _fake_endpoint(monkeypatch, ("real reasoning", "a", "stop"), ("", "b", "stop"))
+    traces = tmp_path / "tr.jsonl"
+    cli.main(["trace", str(tasks), "-o", str(traces)])
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.0, "oversight_evasion": 0.0}
+    assert cli.main(["score", str(traces)]) == 2                 # incomplete, not a crash
+    assert len(patched["judge"].calls) == 1                      # the good row was assessed
+
+
+def test_trace_all_complete_exits_clean(tmp_path, patched, monkeypatch):
+    tasks = tmp_path / "t.txt"; tasks.write_text("one\n")
+    _fake_endpoint(monkeypatch, ("thinking", "answer", "stop"))
+    assert cli.main(["trace", str(tasks), "-o", str(tmp_path / "o.jsonl")]) == 0

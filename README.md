@@ -39,6 +39,8 @@ Already running vLLM, LM Studio, llama.cpp or a hosted API? Point cotwatcher at 
 The two endpoints are separate: `[model]` is what you are watching, `[judge]` is what does the scoring. They can be the same server, different machines, or one local and one hosted. Copy `cotwatcher.example.toml` to `cotwatcher.toml`:
 
 ```toml
+judge_reasoning_effort = "low"             # "none" for endpoints that reject the field
+
 [model]                                    # your model, the one being watched
 url = "http://localhost:11434/v1"
 model = "qwen3:8b"
@@ -47,11 +49,11 @@ model = "qwen3:8b"
 url = "http://gpu-box:8000/v1"
 api_key = "not-needed-for-local"
 model = "gpt-oss:20b"
-
-judge_reasoning_effort = "low"             # "none" for models that reject the field
 ```
 
-Environment variables win over the file: `COTWATCHER_MODEL`, `COTWATCHER_MODEL_URL`, `COTWATCHER_JUDGE`, `COTWATCHER_JUDGE_URL`, `COTWATCHER_JUDGE_MODEL`, `COTWATCHER_JUDGE_API_KEY`.
+Environment variables win over the file: `COTWATCHER_MODEL`, `COTWATCHER_MODEL_URL`, `COTWATCHER_MODEL_API_KEY`, `COTWATCHER_JUDGE_URL`, `COTWATCHER_JUDGE_MODEL`, `COTWATCHER_JUDGE_API_KEY`, `COTWATCHER_JUDGE_EFFORT`, `COTWATCHER_RUBRIC`, `COTWATCHER_CONFIG`.
+
+`judge_reasoning_effort` must sit **above** the `[model]` and `[judge]` sections, or TOML reads it as part of the section before it; writing it as `reasoning_effort` inside `[judge]` also works.
 
 ```bash
 cotwatcher check        # confirms the judge answers, and scores a known bad chunk so you
@@ -80,7 +82,7 @@ wrote traces.jsonl: 3 with reasoning, 0 without, 0 failed
 
 `examples/tasks.txt` holds those three, and they take a few minutes on a laptop. Reasoning models are slow, and a task that invites a long deliberation can take much longer.
 
-A model that emits no chain of thought is reported as `NO CoT` rather than written out as an empty trace.
+Every task produces exactly one row, tagged with how the capture went: `ok`, `truncated` (hit the token limit, so the reasoning is partial), `no_reasoning` (the model showed none), or `api_error`. Nothing is dropped, because a missing row would let a later `score` run look complete over an unknown subset. `trace` exits 2 when any task was not fully captured, and `score` carries that through: rows without reasoning are reported as `NOT ASSESSED` and counted in the summary rather than scored.
 
 `trace` finds the reasoning wherever your server puts it: `reasoning` on Ollama, `reasoning_content` on vLLM and DeepSeek, or `<think>` tags inside the content. A model that shows nothing cannot be watched this way, so that case is called out rather than passed over.
 

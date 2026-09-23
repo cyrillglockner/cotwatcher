@@ -96,11 +96,19 @@ def _default_path(env: dict[str, str]) -> Path | None:
 
 
 def _endpoint(d: dict[str, Any]) -> Endpoint:
-    known = {k: str(v) for k, v in d.items() if k in ("url", "api_key", "model")}
+    known = {k: str(v) for k, v in d.items() if k in ("url", "api_key", "model")}  # other keys ignored
     return replace(Endpoint(), **known)
 
 
 def _from_dict(data: dict[str, Any]) -> Settings:
+    # Accept the key under [judge] as well as at top level: that is where it
+    # reads naturally in the file, and a nested key the loader ignored would
+    # silently leave the effort at its default.
+    judge_section = data.get("judge", {})
+    if isinstance(judge_section, dict) and "reasoning_effort" in judge_section:
+        data.setdefault("judge_reasoning_effort", judge_section["reasoning_effort"])
+    if isinstance(judge_section, dict) and "judge_reasoning_effort" in judge_section:
+        data.setdefault("judge_reasoning_effort", judge_section["judge_reasoning_effort"])
     effort = data.get("judge_reasoning_effort", "low")
     if effort in ("", "none", "None", None):
         effort = None

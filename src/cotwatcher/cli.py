@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -39,30 +40,65 @@ from . import __version__, config
 from .judge import Score
 
 EXIT_CLEAN, EXIT_FLAGGED, EXIT_INCOMPLETE = 0, 1, 2
+
+
+class InputError(Exception):
+    """Bad input, config or output path. Always exit 2: never a detection."""
 CHUNK_FIELDS = ("reasoning", "text", "chunk", "content")
 
 
+def _text_field(rec: dict, where: str) -> str | None:
+    """The chunk text, or None when the record carries none."""
+    for f in CHUNK_FIELDS:
+        if f not in rec:
+            continue
+        v = rec[f]
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        if not isinstance(v, str):
+            raise InputError(f"{where}: {f!r} must be a string, got {type(v).__name__}")
+        return v
+    return None
+
+
 def read_chunks(path: Path) -> list[dict]:
+    """Load chunks to score.
+
+    A row with no reasoning is kept, not dropped: a capture that produced
+    nothing is part of the coverage picture and must reach the summary rather
+    than silently shrink the denominator.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise InputError(f"cannot read {path}: {e.strerror or e}")
+
     if path.suffix in (".jsonl", ".ndjson"):
         out = []
-        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        for n, line in enumerate(raw.splitlines(), 1):
             line = line.strip()
             if not line:
                 continue
+            where = f"{path}:{n}"
             try:
                 rec = json.loads(line)
             except json.JSONDecodeError as e:
-                raise SystemExit(f"{path}:{n}: not valid JSON ({e.msg})")
-            text = next((rec[f] for f in CHUNK_FIELDS if rec.get(f)), None)
-            if text is None:
-                raise SystemExit(f"{path}:{n}: no {' / '.join(CHUNK_FIELDS)} field")
-            out.append({"id": rec.get("id", f"{path.stem}#{n}"), "reasoning": text,
-                        "task": rec.get("task", rec.get("prompt", "")), "context": rec.get("context", "")})
+                raise InputError(f"{where}: not valid JSON ({e.msg})")
+            if not isinstance(rec, dict):
+                raise InputError(f"{where}: expected a JSON object, got {type(rec).__name__}")
+            text = _text_field(rec, where)
+            out.append({"id": str(rec.get("id", f"{path.stem}#{n}")), "reasoning": text or "",
+                        "task": rec.get("task", rec.get("prompt", "")) or "",
+                        "context": rec.get("context", "") or "",
+                        "capture_status": rec.get("capture_status", "ok" if text else "no_reasoning")})
+        if not out:
+            raise InputError(f"{path}: no records")
         return out
-    text = path.read_text(encoding="utf-8").strip()
+
+    text = raw.strip()
     if not text:
-        raise SystemExit(f"{path}: empty")
-    return [{"id": path.name, "reasoning": text, "task": "", "context": ""}]
+        raise InputError(f"{path}: empty")
+    return [{"id": path.name, "reasoning": text, "task": "", "context": "", "capture_status": "ok"}]
 
 
 def settings_for(args) -> config.Settings:
@@ -71,7 +107,7 @@ def settings_for(args) -> config.Settings:
     if getattr(args, "rubric", None):
         path = Path(args.rubric)
         if not path.is_file():
-            raise SystemExit(f"rubric not found: {path}")
+            raise InputError(f"rubric not found: {path}")
         s = replace(s, rubric_path=path)
     return s
 
@@ -126,20 +162,31 @@ def reasoning_of(message) -> str:
 
 
 def read_tasks(path: Path) -> list[str]:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise InputError(f"cannot read {path}: {e.strerror or e}")
     if path.suffix in (".jsonl", ".ndjson"):
         out = []
-        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        for n, line in enumerate(raw.splitlines(), 1):
             if not line.strip():
                 continue
-            rec = json.loads(line)
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as e:
+                raise InputError(f"{path}:{n}: not valid JSON ({e.msg})")
+            if not isinstance(rec, dict):
+                raise InputError(f"{path}:{n}: expected a JSON object")
             task = rec.get("task") or rec.get("prompt")
-            if not task:
-                raise SystemExit(f"{path}:{n}: no task / prompt field")
+            if not isinstance(task, str) or not task.strip():
+                raise InputError(f"{path}:{n}: no usable task / prompt field")
             out.append(task)
+        if not out:
+            raise InputError(f"{path}: no tasks found")
         return out
-    tasks = [t.strip() for t in path.read_text(encoding="utf-8").split("\n\n") if t.strip()]
+    tasks = [t.strip() for t in raw.split("\n\n") if t.strip()]
     if not tasks:
-        raise SystemExit(f"{path}: no tasks found")
+        raise InputError(f"{path}: no tasks found")
     return tasks
 
 
@@ -150,43 +197,71 @@ def cmd_trace(args) -> int:
     client = settings.model.client()
     print(f"{len(tasks)} task(s) -> {settings.model.model} @ {settings.model.url}\n")
 
-    kept = empty = failed = 0
-    with open(args.out, "w", encoding="utf-8") as out:
+    # Every task produces exactly one row, whatever happened to it. A task that
+    # errored or returned nothing is part of the coverage record; dropping it
+    # would let a later `score` run report a clean result over an unknown subset.
+    counts = {"ok": 0, "truncated": 0, "no_reasoning": 0, "api_error": 0}
+    try:
+        out = open(args.out, "w", encoding="utf-8")
+    except OSError as e:
+        raise InputError(f"cannot write {args.out}: {e.strerror or e}")
+
+    with out:
         for i, task in enumerate(tasks, 1):
+            row = {"id": f"task{i}", "task": task, "reasoning": "", "answer": "",
+                   "model": settings.model.model, "finish_reason": None,
+                   "capture_status": "api_error", "error": None}
             try:
                 resp = client.chat.completions.create(
                     model=settings.model.model, messages=[{"role": "user", "content": task}],
                     temperature=args.temperature, max_tokens=args.max_tokens)
             except Exception as e:  # noqa: BLE001
-                failed += 1
-                print(f"{i:>3}. FAILED  {type(e).__name__}: {e}")
-                continue
-            choice = resp.choices[0]
-            reasoning = reasoning_of(choice.message)
-            answer = choice.message.content or ""
-            if reasoning:
-                kept += 1
+                row["error"] = f"{type(e).__name__}: {e}"[:300]
+                counts["api_error"] += 1
+                print(f"{i:>3}. API ERROR  {row['error']}")
             else:
-                empty += 1
-            out.write(json.dumps({"id": f"task{i}", "task": task, "reasoning": reasoning,
-                                  "answer": answer, "model": settings.model.model,
-                                  "finish_reason": choice.finish_reason}) + "\n")
+                choice = resp.choices[0]
+                row["reasoning"] = reasoning_of(choice.message)
+                row["answer"] = choice.message.content or ""
+                row["finish_reason"] = choice.finish_reason
+                if not row["reasoning"]:
+                    status = "no_reasoning"
+                elif choice.finish_reason == "length":
+                    status = "truncated"
+                else:
+                    status = "ok"
+                row["capture_status"] = status
+                counts[status] += 1
+                label = {"ok": "ok       ", "truncated": "TRUNCATED", "no_reasoning": "NO CoT   "}[status]
+                print(f"{i:>3}. {label}  reasoning {len(row['reasoning']):>6} chars, "
+                      f"answer {len(row['answer']):>6} chars")
+            out.write(json.dumps(row) + "\n")
             out.flush()
-            mark = "ok    " if reasoning else "NO CoT"
-            print(f"{i:>3}. {mark}  reasoning {len(reasoning):>6} chars, answer {len(answer):>6} chars"
-                  f"{'  (truncated)' if choice.finish_reason == 'length' else ''}")
 
-    print(f"\nwrote {args.out}: {kept} with reasoning, {empty} without, {failed} failed")
-    if empty:
-        print(f"\n{empty} response(s) carried no chain of thought. Either the model is not a reasoning\n"
-              f"model, or this server does not expose the reasoning field. cotwatcher can only score\n"
-              f"what the model shows; scoring the answer instead is a different tool.")
-    if failed or not kept:
+    complete = counts["ok"]
+    incomplete = counts["truncated"] + counts["no_reasoning"] + counts["api_error"]
+    print(f"\nwrote {args.out}: {complete} complete, {counts['truncated']} truncated, "
+          f"{counts['no_reasoning']} without reasoning, {counts['api_error']} failed")
+    if counts["no_reasoning"]:
+        print(f"\n{counts['no_reasoning']} response(s) carried no chain of thought. Either the model is not\n"
+              "a reasoning model, or this server does not expose the reasoning field. cotwatcher can only\n"
+              "score what the model shows.")
+    if counts["truncated"]:
+        print(f"\n{counts['truncated']} response(s) hit the token limit, so their reasoning is partial. "
+              "Raise --max-tokens to capture the rest.")
+    if incomplete:
+        print(f"\nCapture incomplete: {incomplete} of {len(tasks)} task(s). Every task is still recorded "
+              "in the file with its capture_status, so scoring can report coverage.")
         return EXIT_INCOMPLETE
     return EXIT_CLEAN
 
 
 def cmd_score(args) -> int:
+    # NaN makes every comparison false, so an unchecked threshold silently
+    # disables all alerting while still reporting a clean run.
+    t = args.threshold
+    if not math.isfinite(t) or not 0.0 <= t <= 1.0:
+        raise InputError(f"--threshold must be a finite number in [0, 1], got {t!r}")
     settings = settings_for(args)
     chunks = read_chunks(Path(args.file))
     judge = settings.make_judge()
@@ -196,7 +271,16 @@ def cmd_score(args) -> int:
     flagged = errors = 0
 
     print(f"{len(chunks)} chunk(s), judge {settings.judge.model} @ {settings.judge.url}\n")
+    uncaptured = 0
     for c in chunks:
+        if not c["reasoning"].strip():
+            uncaptured += 1
+            print(f"{c['id']}\n  NOT ASSESSED: no reasoning captured ({c['capture_status']})\n")
+            if out:
+                out.write(json.dumps({**c, "scores": None, "rationale": "",
+                                      "error": f"no reasoning captured ({c['capture_status']})"}) + "\n")
+                out.flush()
+            continue
         try:
             setattr(judge, "_next_id", c["id"])   # test hook only; real judges ignore it
             s: Score = judge.score(c["reasoning"], context=c["context"], task=c["task"])
@@ -210,7 +294,7 @@ def cmd_score(args) -> int:
             errors += 1
             print(f"{c['id']}\n  UNSCORED: {s.error}\n")
             continue
-        hits = s.over(args.threshold)
+        hits = s.over(t)
         flagged += bool(hits)
         mark = "FLAG" if hits else "    "
         print(f"{mark} {c['id']}")
@@ -224,39 +308,57 @@ def cmd_score(args) -> int:
     if out:
         out.close()
         print(f"wrote {args.out}")
-    print(f"{flagged} flagged at >= {args.threshold}, {errors} unscored, {len(chunks) - errors} scored")
-    if errors:
-        print(f"Assessment incomplete: {errors} of {len(chunks)} chunk(s) were not scored. "
-              f"An unscored chunk is not a clean chunk.")
+    assessed = len(chunks) - errors - uncaptured
+    print(f"{flagged} flagged at >= {args.threshold}, {assessed} assessed, "
+          f"{errors} judge error(s), {uncaptured} without captured reasoning, {len(chunks)} total")
+    if errors or uncaptured:
+        print(f"Assessment incomplete: {errors + uncaptured} of {len(chunks)} chunk(s) were not assessed. "
+              "An unassessed chunk is not a clean chunk.")
         return EXIT_INCOMPLETE
     return EXIT_FLAGGED if flagged else EXIT_CLEAN
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="cotwatcher", description="Score model reasoning against a rubric.")
+    # These are accepted both before and after the subcommand, because the
+    # documented form is `cotwatcher score FILE --rubric mine.yaml` and argparse
+    # only honours parent options placed before the subcommand.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-c", "--config", help="path to cotwatcher.toml")
+    common.add_argument("-r", "--rubric", help="path to a rubric YAML file (overrides the config)")
+
+    ap = argparse.ArgumentParser(prog="cotwatcher", parents=[common],
+                                 description="Score model reasoning against a rubric.")
     ap.add_argument("--version", action="version", version=f"cotwatcher {__version__}")
-    ap.add_argument("-c", "--config", help="path to cotwatcher.toml")
-    ap.add_argument("-r", "--rubric", help="path to a rubric YAML file (overrides the config)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("check", help="verify the judge endpoint and rubric").set_defaults(fn=cmd_check)
-    sub.add_parser("rubric", help="print the rubric as the judge sees it").set_defaults(fn=cmd_rubric)
+    sub.add_parser("check", parents=[common], help="verify the judge endpoint and rubric").set_defaults(fn=cmd_check)
+    sub.add_parser("rubric", parents=[common], help="print the rubric as the judge sees it").set_defaults(fn=cmd_rubric)
 
-    tr = sub.add_parser("trace", help="run your model on tasks and capture its reasoning")
+    tr = sub.add_parser("trace", parents=[common], help="run your model on tasks and capture its reasoning")
     tr.add_argument("tasks", help="tasks file: one per blank-line-separated block, or .jsonl with a task field")
     tr.add_argument("-o", "--out", default="traces.jsonl")
     tr.add_argument("--temperature", type=float, default=0.7)
     tr.add_argument("--max-tokens", type=int, default=4000)
     tr.set_defaults(fn=cmd_trace)
 
-    sc = sub.add_parser("score", help="score reasoning chunks from a .jsonl or .txt file")
+    sc = sub.add_parser("score", parents=[common], help="score reasoning chunks from a .jsonl or .txt file")
     sc.add_argument("file")
     sc.add_argument("-o", "--out", help="write per-chunk results as JSON Lines")
     sc.add_argument("-t", "--threshold", type=float, default=0.5)
     sc.set_defaults(fn=cmd_score)
 
+    # argparse writes the parent default (None) over a value given before the
+    # subcommand, so re-parse just those two from the raw arguments.
+    pre, _ = common.parse_known_args(argv if argv is not None else sys.argv[1:])
     args = ap.parse_args(argv)
-    return args.fn(args)
+    for name in ("config", "rubric"):
+        if getattr(args, name, None) is None and getattr(pre, name, None) is not None:
+            setattr(args, name, getattr(pre, name))
+    try:
+        return args.fn(args)
+    except InputError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_INCOMPLETE
 
 
 if __name__ == "__main__":

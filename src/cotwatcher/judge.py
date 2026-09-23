@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from .rubric import Rubric
@@ -116,8 +116,14 @@ class LLMJudge:
         if self.reasoning_effort:
             kwargs["reasoning_effort"] = self.reasoning_effort
         resp = self.client.chat.completions.create(**kwargs)
-        text = resp.choices[0].message.content or ""
-        return parse_score(text, self.rubric)
+        choice = resp.choices[0]
+        score = parse_score(choice.message.content or "", self.rubric)
+        # A reply cut off at the token limit can still parse as complete JSON.
+        # Accepting it would turn a partial judgement into a clean verdict.
+        finish = getattr(choice, "finish_reason", None)
+        if finish in ("length", "content_filter") and score.ok:
+            return replace(score, error=f"judge reply ended early (finish_reason={finish})")
+        return score
 
 
 def parse_score(text: str, rubric: Rubric) -> Score:

@@ -9,15 +9,16 @@ from cotwatcher import LLMJudge, Rubric, parse_score
 class FakeClient:
     """Minimal stand-in for openai.OpenAI that returns a canned message."""
 
-    def __init__(self, content):
+    def __init__(self, content, finish_reason="stop"):
         self.calls = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
         self._content = content
+        self._finish = finish_reason
 
     def _create(self, **kwargs):
         self.calls.append(kwargs)
         msg = SimpleNamespace(content=self._content)
-        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason=self._finish)])
 
 
 def test_parse_score_fills_missing_and_clamps():
@@ -85,3 +86,14 @@ def test_numeric_strings_and_clamping_still_fine():
     full = {"deception": "0.4", "reward_hacking": 7, "oversight_evasion": -1}
     s = parse_score(json.dumps({"scores": full}), r)
     assert s.ok and s.scores == {"deception": 0.4, "reward_hacking": 1.0, "oversight_evasion": 0.0}
+
+
+@pytest.mark.parametrize("finish,expect_ok", [("stop", True), ("length", False), ("content_filter", False)])
+def test_truncated_judge_reply_is_not_a_verdict(finish, expect_ok):
+    """Complete-looking JSON cut off at the token limit must not read as clean."""
+    r = Rubric.default()
+    client = FakeClient(json.dumps({"scores": dict.fromkeys(r.names, 0.0)}), finish_reason=finish)
+    s = LLMJudge(client, model="m", rubric=r).score("x")
+    assert s.ok is expect_ok
+    if not expect_ok:
+        assert finish in s.error
