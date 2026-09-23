@@ -2,7 +2,14 @@
 
     cotwatcher check                      verify the judge endpoint and rubric
     cotwatcher rubric                     print the rubric as the judge sees it
+    cotwatcher trace TASKS -o OUT         run your model, capture its reasoning
     cotwatcher score FILE [-o OUT]        score reasoning chunks from a file
+
+The usual flow is to point `[model]` at whatever you are running, capture some
+reasoning, then score it against a rubric you wrote:
+
+    cotwatcher trace tasks.txt -o traces.jsonl
+    cotwatcher score traces.jsonl --rubric my-rubric.yaml
 
 `score` reads JSON Lines with a `reasoning` field (`text` and `chunk` also
 work), plus optional `task`, `context` and `id`. A plain text file is scored
@@ -25,6 +32,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+from dataclasses import replace
 
 from . import __version__, config
 from .judge import Score
@@ -56,8 +65,19 @@ def read_chunks(path: Path) -> list[dict]:
     return [{"id": path.name, "reasoning": text, "task": "", "context": ""}]
 
 
+def settings_for(args) -> config.Settings:
+    """Settings from file and environment, with --rubric taking precedence."""
+    s = config.load(args.config)
+    if getattr(args, "rubric", None):
+        path = Path(args.rubric)
+        if not path.is_file():
+            raise SystemExit(f"rubric not found: {path}")
+        s = replace(s, rubric_path=path)
+    return s
+
+
 def cmd_check(args) -> int:
-    settings = config.load(args.config)
+    settings = settings_for(args)
     rubric = settings.rubric()
     print(f"rubric      {len(rubric.categories)} categories: {', '.join(rubric.names)}")
     print(f"judge       {settings.judge.model} @ {settings.judge.url}")
@@ -82,12 +102,92 @@ def cmd_check(args) -> int:
 
 
 def cmd_rubric(args) -> int:
-    print(config.load(args.config).rubric().to_prompt())
+    print(settings_for(args).rubric().to_prompt())
+    return EXIT_CLEAN
+
+
+def reasoning_of(message) -> str:
+    """The model's thinking, wherever this server puts it.
+
+    Ollama uses `reasoning`, vLLM and DeepSeek use `reasoning_content`, and
+    some models emit <think>...</think> inside the ordinary content instead.
+    """
+    for attr in ("reasoning", "reasoning_content"):
+        if getattr(message, attr, None):
+            return getattr(message, attr)
+    extra = getattr(message, "model_extra", None) or {}
+    for key in ("reasoning", "reasoning_content"):
+        if extra.get(key):
+            return extra[key]
+    content = message.content or ""
+    if "<think>" in content and "</think>" in content:
+        return content.split("<think>", 1)[1].split("</think>", 1)[0].strip()
+    return ""
+
+
+def read_tasks(path: Path) -> list[str]:
+    if path.suffix in (".jsonl", ".ndjson"):
+        out = []
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            task = rec.get("task") or rec.get("prompt")
+            if not task:
+                raise SystemExit(f"{path}:{n}: no task / prompt field")
+            out.append(task)
+        return out
+    tasks = [t.strip() for t in path.read_text(encoding="utf-8").split("\n\n") if t.strip()]
+    if not tasks:
+        raise SystemExit(f"{path}: no tasks found")
+    return tasks
+
+
+def cmd_trace(args) -> int:
+    """Run the watched model on each task and record what it thought."""
+    settings = settings_for(args)
+    tasks = read_tasks(Path(args.tasks))
+    client = settings.model.client()
+    print(f"{len(tasks)} task(s) -> {settings.model.model} @ {settings.model.url}\n")
+
+    kept = empty = failed = 0
+    with open(args.out, "w", encoding="utf-8") as out:
+        for i, task in enumerate(tasks, 1):
+            try:
+                resp = client.chat.completions.create(
+                    model=settings.model.model, messages=[{"role": "user", "content": task}],
+                    temperature=args.temperature, max_tokens=args.max_tokens)
+            except Exception as e:  # noqa: BLE001
+                failed += 1
+                print(f"{i:>3}. FAILED  {type(e).__name__}: {e}")
+                continue
+            choice = resp.choices[0]
+            reasoning = reasoning_of(choice.message)
+            answer = choice.message.content or ""
+            if reasoning:
+                kept += 1
+            else:
+                empty += 1
+            out.write(json.dumps({"id": f"task{i}", "task": task, "reasoning": reasoning,
+                                  "answer": answer, "model": settings.model.model,
+                                  "finish_reason": choice.finish_reason}) + "\n")
+            out.flush()
+            mark = "ok    " if reasoning else "NO CoT"
+            print(f"{i:>3}. {mark}  reasoning {len(reasoning):>6} chars, answer {len(answer):>6} chars"
+                  f"{'  (truncated)' if choice.finish_reason == 'length' else ''}")
+
+    print(f"\nwrote {args.out}: {kept} with reasoning, {empty} without, {failed} failed")
+    if empty:
+        print(f"\n{empty} response(s) carried no chain of thought. Either the model is not a reasoning\n"
+              f"model, or this server does not expose the reasoning field. cotwatcher can only score\n"
+              f"what the model shows; scoring the answer instead is a different tool.")
+    if failed or not kept:
+        return EXIT_INCOMPLETE
     return EXIT_CLEAN
 
 
 def cmd_score(args) -> int:
-    settings = config.load(args.config)
+    settings = settings_for(args)
     chunks = read_chunks(Path(args.file))
     judge = settings.make_judge()
     names = judge.rubric.names
@@ -136,10 +236,18 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="cotwatcher", description="Score model reasoning against a rubric.")
     ap.add_argument("--version", action="version", version=f"cotwatcher {__version__}")
     ap.add_argument("-c", "--config", help="path to cotwatcher.toml")
+    ap.add_argument("-r", "--rubric", help="path to a rubric YAML file (overrides the config)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("check", help="verify the judge endpoint and rubric").set_defaults(fn=cmd_check)
     sub.add_parser("rubric", help="print the rubric as the judge sees it").set_defaults(fn=cmd_rubric)
+
+    tr = sub.add_parser("trace", help="run your model on tasks and capture its reasoning")
+    tr.add_argument("tasks", help="tasks file: one per blank-line-separated block, or .jsonl with a task field")
+    tr.add_argument("-o", "--out", default="traces.jsonl")
+    tr.add_argument("--temperature", type=float, default=0.7)
+    tr.add_argument("--max-tokens", type=int, default=4000)
+    tr.set_defaults(fn=cmd_trace)
 
     sc = sub.add_parser("score", help="score reasoning chunks from a .jsonl or .txt file")
     sc.add_argument("file")

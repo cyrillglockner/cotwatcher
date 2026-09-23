@@ -23,20 +23,25 @@ class FakeJudge:
         return Score(scores=self._scores, rationale="because", error=self._error)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def patched(monkeypatch):
-    from cotwatcher import Rubric, config
-    rubric = Rubric.default()
+    """Replace Settings.make_judge at class level.
+
+    Patching the instance is not enough: `settings_for()` uses
+    dataclasses.replace for --rubric, which builds a fresh Settings and would
+    drop an instance attribute, letting a test reach the real endpoint.
+    """
+    from cotwatcher import config
     holder = {}
 
-    def fake_load(path=None, env=None):
-        s = config.Settings()
+    def make_judge(self):
+        rubric = self.rubric()          # honours any --rubric override
         holder["judge"] = FakeJudge(rubric, holder.get("scores", dict.fromkeys(rubric.names, 0.0)),
                                     holder.get("error"), holder.get("raise_on"))
-        object.__setattr__(s, "make_judge", lambda: holder["judge"])
-        return s
+        return holder["judge"]
 
-    monkeypatch.setattr(cli.config, "load", fake_load)
+    monkeypatch.setattr(config.Settings, "make_judge", make_judge)
+    monkeypatch.setattr(cli.config, "load", lambda path=None, env=None: config.Settings())
     return holder
 
 
@@ -119,3 +124,64 @@ def test_bad_input_is_rejected_with_a_line_number(tmp_path, line, msg, patched):
     with pytest.raises(SystemExit) as e:
         cli.main(["score", str(src)])
     assert msg in str(e.value) and "bad.jsonl:1" in str(e.value)
+
+
+def test_rubric_flag_overrides_the_config(tmp_path, capsys, patched):
+    """--rubric must reach the judge, not just be parsed."""
+    r = tmp_path / "mine.yaml"
+    r.write_text("categories:\n  - name: silent_scope_change\n    definition: changes scope quietly\n")
+    assert cli.main(["--rubric", str(r), "rubric"]) == 0
+    assert "### silent_scope_change" in capsys.readouterr().out
+
+
+def test_missing_rubric_file_is_rejected(tmp_path, patched):
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--rubric", str(tmp_path / "nope.yaml"), "rubric"])
+    assert "rubric not found" in str(e.value)
+
+
+def test_score_uses_the_rubric_flag(tmp_path, patched):
+    src = tmp_path / "c.jsonl"
+    src.write_text(json.dumps({"reasoning": "x"}) + "\n")
+    r = tmp_path / "mine.yaml"
+    r.write_text("categories:\n  - name: only_one\n    definition: d\n")
+    cli.main(["--rubric", str(r), "score", str(src)])
+    assert patched["judge"].rubric.names == ("only_one",)
+
+
+def test_reasoning_is_found_wherever_the_server_puts_it():
+    """Ollama, vLLM/DeepSeek and <think>-tag models all expose it differently."""
+    from types import SimpleNamespace as NS
+    from cotwatcher.cli import reasoning_of
+
+    assert reasoning_of(NS(reasoning="ollama style", content="a")) == "ollama style"
+    assert reasoning_of(NS(reasoning=None, reasoning_content="vllm style", content="a")) == "vllm style"
+    assert reasoning_of(NS(content="x", model_extra={"reasoning_content": "extra style"})) == "extra style"
+    assert reasoning_of(NS(content="pre <think> tagged style </think> post")) == "tagged style"
+    assert reasoning_of(NS(content="no thinking here")) == ""
+
+
+def test_read_tasks_splits_on_blank_lines(tmp_path):
+    from cotwatcher.cli import read_tasks
+    p = tmp_path / "t.txt"
+    p.write_text("first task\nwith a second line\n\nsecond task\n")
+    assert read_tasks(p) == ["first task\nwith a second line", "second task"]
+
+
+def test_trace_reports_responses_without_reasoning(tmp_path, capsys, patched, monkeypatch):
+    """A model that shows no chain of thought must be called out, not silently recorded."""
+    from types import SimpleNamespace as NS
+    from cotwatcher import config
+
+    def fake_create(**kw):
+        msg = NS(reasoning="", reasoning_content="", content="just an answer", model_extra={})
+        return NS(choices=[NS(message=msg, finish_reason="stop")])
+
+    monkeypatch.setattr(config.Endpoint, "client",
+                        lambda self: NS(chat=NS(completions=NS(create=fake_create))))
+    tasks = tmp_path / "t.txt"; tasks.write_text("do a thing\n")
+    out = tmp_path / "tr.jsonl"
+    assert cli.main(["trace", str(tasks), "-o", str(out)]) == 2      # nothing usable captured
+    printed = capsys.readouterr().out
+    assert "NO CoT" in printed and "no chain of thought" in printed
+    assert json.loads(out.read_text().splitlines()[0])["reasoning"] == ""
