@@ -21,7 +21,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # *watched* model. `qwen3.5-9b` is the current watched model (it produced the
 # pressure episodes); the R1 entries are from the earlier feasibility work and
 # their probes do not transfer.
+# Qwen3.5 is a hybrid architecture (gated delta rule + causal conv) whose fast
+# kernels are CUDA-only, so on MPS it falls back to reference PyTorch: measured
+# 50-90s per short chunk on an M2, against ~2s for a plain transformer of the
+# same size. Unusable as a probed model on this machine (2026-09-23).
 MODELS = {
+    "r1-qwen3-8b": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
     "qwen3.5-9b": "Qwen/Qwen3.5-9B",
     "1.5b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
     "7b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
