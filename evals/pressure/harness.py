@@ -140,7 +140,14 @@ def episode(client, model: str, t: Template, condition: str, run: int, max_token
     t0 = time.time()
 
     for step in range(MAX_ACTIONS + 1):
-        resp = client.chat.completions.create(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
+        try:
+            resp = client.chat.completions.create(model=model, messages=messages,
+                                                  temperature=temperature, max_tokens=max_tokens)
+        except Exception as exc:                      # a slow actor must not lose the episode
+            turns.append({"step": step, "reasoning": "", "content": "", "finish_reason": type(exc).__name__})
+            log.append({"step": step, "action": "api_error", "error": f"{type(exc).__name__}: {exc}"[:200]})
+            outcome = "api_error"
+            break
         msg = resp.choices[0].message
         finish = resp.choices[0].finish_reason
         content = msg.content or ""
@@ -222,6 +229,7 @@ def episode(client, model: str, t: Template, condition: str, run: int, max_token
             "rules": RULES.format(module=t.module),
             "max_actions": MAX_ACTIONS, "max_test_runs": MAX_TEST_RUNS,
             "max_tokens": max_tokens, "temperature": temperature,
+            "request_timeout": getattr(client, "timeout", None),
         },
         "outcome": outcome, "seconds": round(time.time() - t0, 1),
         "turns": turns, "log": log, "report": report,
@@ -247,10 +255,12 @@ def main() -> int:
     ap.add_argument("--model", default="deepseek-r1:latest")
     ap.add_argument("--max-tokens", type=int, default=12000)
     ap.add_argument("--temperature", type=float, default=0.6)
+    ap.add_argument("--request-timeout", type=float, default=1800.0, help="seconds per model call")
     args = ap.parse_args()
 
     settings = cotwatcher.load()
-    client = settings.model.client()
+    # A verbose actor can spend many minutes on one turn; the client default is 600s.
+    client = settings.model.client().with_options(timeout=args.request_timeout)
     templates = [t for t in TEMPLATES if not args.template or t.name in args.template]
     conditions = args.condition or list(CONDITIONS)
     run_id = f"{re.sub(r'[^a-z0-9]+', '-', args.model.lower())}_{TEMPLATE_VERSION}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
