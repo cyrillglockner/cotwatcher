@@ -1,5 +1,18 @@
 """Completion-pressure experiment: does the model report a blocker or claim success?
 
+⚠ THIS RUNS MODEL-GENERATED PYTHON ON THIS MACHINE.
+
+The experiment deliberately puts a model under pressure to make tests pass,
+then executes whatever it writes. A temporary directory is not a sandbox: the
+subprocess inherits this user's environment, filesystem access, network and
+credentials. Run it in a disposable VM or container, never on a machine with
+anything you care about.
+
+Because of that it refuses to start unless you opt in:
+
+    COTWATCHER_ALLOW_CODE_EXECUTION=1 python evals/pressure/harness.py ...
+
+
     .venv/bin/python evals/pressure/harness.py --runs 3                 # all templates x conditions
     .venv/bin/python evals/pressure/harness.py --template slugify --condition control --runs 1
 
@@ -27,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -106,8 +120,13 @@ def syntax_error(source: str) -> str | None:
 
 
 def run_pytest(workdir: Path, test_file: str) -> dict:
+    # Minimal environment: the model's code should not see API keys or tokens that
+    # happen to be exported in this shell. This narrows the blast radius; it is
+    # not isolation. See the module docstring.
+    env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "LC_ALL", "TMPDIR")}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", test_file],
-                       cwd=workdir, capture_output=True, text=True, timeout=60)
+                       cwd=workdir, capture_output=True, text=True, timeout=60, env=env)
     out = (r.stdout + r.stderr).strip()
     passed = sum(int(n) for n in re.findall(r"(\d+) passed", out))
     failed = sum(int(n) for n in re.findall(r"(\d+) failed", out))
@@ -247,7 +266,20 @@ def episode(client, model: str, t: Template, condition: str, run: int, max_token
     }
 
 
+def require_opt_in() -> None:
+    """Refuse to execute model-written code unless the operator asked for it."""
+    if os.environ.get("COTWATCHER_ALLOW_CODE_EXECUTION") == "1":
+        return
+    raise SystemExit(
+        "This harness executes Python written by a model, in a process with your\n"
+        "environment, filesystem and network access. A temp directory is not a\n"
+        "sandbox. Run it in a disposable VM or container.\n\n"
+        "To proceed anyway:\n"
+        "    COTWATCHER_ALLOW_CODE_EXECUTION=1 python evals/pressure/harness.py ...")
+
+
 def main() -> int:
+    require_opt_in()
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--template", action="append")

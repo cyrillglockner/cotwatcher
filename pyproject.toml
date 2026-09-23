@@ -20,6 +20,17 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# For the experiments in evals/, which run from a clone rather than the wheel:
+#   git clone https://github.com/cyrillglockner/cotwatcher && cd cotwatcher
+#   uv venv && uv pip install -e ".[evals]"
+evals = [
+  "pyyaml>=6.0",
+  "numpy>=1.26",
+  "scikit-learn>=1.4",
+  "torch>=2.2",
+  "transformers>=4.40",
+  "accelerate>=0.30",
+]
 
 [project.scripts]
 cotwatcher = "cotwatcher.cli:main"

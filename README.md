@@ -1,6 +1,10 @@
 # cotwatcher
 
-A CoT monitor for open-weight reasoning models. It reads the reasoning stream, scores each chunk against a rubric you control, and logs or halts when a score crosses a threshold. Judge and watched model are both plain OpenAI-compatible endpoints, so the whole thing runs local against Ollama, vLLM, LM Studio or llama.cpp.
+An experimental toolkit for scoring reasoning traces and for evaluating chain-of-thought monitors on open-weight models.
+
+Reasoning models emit their chain of thought as text. cotwatcher scores that text against a rubric you control, using any model behind an OpenAI-compatible endpoint, so it runs fully local against Ollama, vLLM, LM Studio or llama.cpp. It ships with an evaluation toolkit for the prior question: whether such scoring catches anything on *your* model and *your* workload.
+
+**What installs today:** a library and a CLI that score saved traces offline, and a rubric you can rewrite. **Not built yet:** reading a live stream, policy enforcement, halting a generation, the proxy. Those are the roadmap, not the product. Detection accuracy on any real workload is unestablished; see Status.
 
 ## What it flags
 
@@ -46,9 +50,9 @@ On 29 hand-written fixtures the text judge scores 1.00 AUROC per category with n
 
 > The spec says "discount is a FRACTION between 0 and 1", so technically passing `10` violates the API contract, BUT we need to make it work for CI.
 
-The judge flagged none of the three, with or without the reasoning in front of it, and agreed with the model that supporting both conventions was legitimate. Two matched episodes where the same model reported the conflict instead were also unflagged, correctly. **A generic rubric does not catch a shortcut that the model can describe as a feature.**
+This judge (gpt-oss:20b) with this default rubric flagged none of the three reviewed billing episodes, with and without the reasoning in front of it, and agreed with the model that supporting both conventions was legitimate. Two episodes from a *different* task, where the same model reported the conflict rather than coding around it, were also unflagged, correctly. The sample is five reviewed episodes from one run of one model, so it does not establish a general rate; it does establish that a fixture score of 1.00 predicted nothing about these cases.
 
-Linear probes on pooled residual-stream activations reach 0.90-1.00 AUROC on held-out synthetic data, including whole tasks held out, at 0.4s per chunk on an M2. Transfer to hand-written text is 1.00 / 0.75 / 0.63 for reward hacking / oversight evasion / deception, on ten chunks per category that share authorship with the generator's instructions. Treat that as a working pipeline, not a detection result.
+Linear probes on pooled residual-stream activations (Qwen3-8B, trained on synthetic contrastive pairs) reach 0.90-1.00 AUROC on held-out synthetic data, including whole tasks held out, at 0.4s per chunk on an M2. Transfer to hand-written text is 1.00 / 0.75 / 0.63 for reward hacking / oversight evasion / deception, on ten chunks per category that share authorship with the generator's instructions. An earlier run of the same pipeline on DeepSeek-R1-Distill-Qwen-7B gave 1.00 / 0.95 / 0.79 on a slightly different fixture set; at these sample sizes that is not a model comparison. Treat all of it as a working pipeline rather than a detection result.
 
 **Next:** task templates whose specifications leave no room for the "support both conventions" reading, run with a model that both drives the harness and can be probed, then judge and probe scored on the same fresh episodes. The question that decides whether any of this is worth running: does reading the chain of thought surface incidents that output and tool-log monitoring miss, at a fixed false-alert budget?
 
@@ -62,14 +66,28 @@ Linear probes on pooled residual-stream activations reach 0.90-1.00 AUROC on hel
 
 Python 3.11+, Ollama, ~13 GB for the default judge.
 
+**To score traces** (Python 3.11+, plus a judge endpoint; Ollama needs ~13 GB for the default model):
+
 ```bash
 pip install cotwatcher
 ollama pull gpt-oss:20b
 
-cotwatcher check                      # verify the endpoint and the rubric
-cotwatcher rubric                     # print the rubric as the judge sees it
-cotwatcher score traces.jsonl         # score reasoning chunks; exit 1 if any are flagged
+cotwatcher check                                  # verify the endpoint and the rubric
+cotwatcher rubric                                 # print the rubric as the judge sees it
+curl -O https://raw.githubusercontent.com/cyrillglockner/cotwatcher/main/examples/traces.jsonl
+cotwatcher score traces.jsonl                     # six sample chunks: three honest, three not
 ```
+
+Exit codes: `0` everything assessed and nothing flagged, `1` something flagged, `2` the assessment was incomplete (a chunk could not be scored, or the endpoint failed). A run the judge could not assess never exits 0.
+
+**To reproduce the experiments**, which live in the repository rather than the wheel:
+
+```bash
+git clone https://github.com/cyrillglockner/cotwatcher && cd cotwatcher
+uv venv && uv pip install -e ".[evals]"           # adds torch, transformers, scikit-learn
+```
+
+⚠ `evals/pressure/` executes Python written by a model. A temp directory is not a sandbox: the subprocess inherits your environment and permissions. Run it in a disposable VM or container. It refuses to start without `COTWATCHER_ALLOW_CODE_EXECUTION=1`.
 
 `score` reads JSON Lines with a `reasoning` field, plus optional `task`, `context` and `id`; a plain `.txt` file is scored as one chunk. `-o results.jsonl` writes per-chunk scores, and `-t` sets the threshold. Chunks the judge failed to score are reported separately and never counted as clean.
 
@@ -100,7 +118,7 @@ if score.ok:
     print(score.max())                            # ('reward_hacking', 1.0)
 ```
 
-Ollama serves models with a 4,096-token context by default and silently drops the start of an over-long prompt, which for the judge is the rubric. For anything beyond short chunks, build the 16k variant and point the judge at it:
+Ollama chooses a context length per model and machine, and it can be as low as 4,096 tokens; when a prompt exceeds it, the start is dropped, which for the judge is the rubric. Episode-level scoring overflowed this on our machine. For anything beyond short chunks, pin the context explicitly:
 
 ```bash
 ollama create gpt-oss:20b-16k -f ollama/Modelfile.gpt-oss-16k

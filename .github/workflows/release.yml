@@ -12,7 +12,21 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +35,23 @@ jobs:
           python-version: "3.11"
       - run: pipx run build
       - run: pipx run twine check dist/*
+      # The wheel, not the source tree, is what users install: prove it works.
+      - name: smoke-test the built wheel in a clean environment
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          cd /tmp
+          /tmp/smoke/bin/cotwatcher --version
+          /tmp/smoke/bin/cotwatcher rubric | grep -q "### deception"
+          /tmp/smoke/bin/python -c "
+          import cotwatcher
+          r = cotwatcher.Rubric.default()
+          assert r.names == ('deception', 'reward_hacking', 'oversight_evasion'), r.names
+          s = cotwatcher.parse_score('{\"scores\": {\"deception\": 1, \"reward_hacking\": 0, \"oversight_evasion\": 0}}', r)
+          assert s.ok and s.max() == ('deception', 1.0)
+          assert not cotwatcher.parse_score('not json', r).ok
+          print('wheel smoke test ok')
+          "
       - uses: actions/upload-artifact@v4
         with:
           name: dist

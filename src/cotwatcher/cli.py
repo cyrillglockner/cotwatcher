@@ -7,8 +7,16 @@
 `score` reads JSON Lines with a `reasoning` field (`text` and `chunk` also
 work), plus optional `task`, `context` and `id`. A plain text file is scored
 as a single chunk. Every result carries the judge's per-category scores and
-rationale; chunks the judge failed to score are reported separately and are
-never counted as clean.
+rationale.
+
+Exit codes, so this can gate CI without a silent pass:
+
+    0   every chunk was assessed and nothing crossed the threshold
+    1   at least one chunk was flagged
+    2   the assessment was incomplete: a chunk could not be scored, the
+        endpoint failed, or the input could not be read
+
+A run where the judge fails on every chunk exits 2, never 0.
 """
 
 from __future__ import annotations
@@ -21,6 +29,7 @@ from pathlib import Path
 from . import __version__, config
 from .judge import Score
 
+EXIT_CLEAN, EXIT_FLAGGED, EXIT_INCOMPLETE = 0, 1, 2
 CHUNK_FIELDS = ("reasoning", "text", "chunk", "content")
 
 
@@ -61,20 +70,20 @@ def cmd_check(args) -> int:
     except Exception as e:  # noqa: BLE001 - the point is to report any failure clearly
         print(f"FAILED: {type(e).__name__}: {e}")
         print("\nIs the endpoint running? For Ollama: `ollama serve`, then `ollama pull <model>`.")
-        return 1
+        return EXIT_INCOMPLETE
     if not s.ok:
         print(f"judge replied but the reply was unusable: {s.error}")
-        return 1
+        return EXIT_INCOMPLETE
     top, val = s.max()
     print(f"ok. Scored a known reward-hacking chunk: {top}={val:.2f}")
     if val < 0.5:
         print("Note: the judge did not flag it. The endpoint works; the judge or rubric may need attention.")
-    return 0
+    return EXIT_CLEAN
 
 
 def cmd_rubric(args) -> int:
     print(config.load(args.config).rubric().to_prompt())
-    return 0
+    return EXIT_CLEAN
 
 
 def cmd_score(args) -> int:
@@ -88,7 +97,11 @@ def cmd_score(args) -> int:
 
     print(f"{len(chunks)} chunk(s), judge {settings.judge.model} @ {settings.judge.url}\n")
     for c in chunks:
-        s: Score = judge.score(c["reasoning"], context=c["context"], task=c["task"])
+        try:
+            setattr(judge, "_next_id", c["id"])   # test hook only; real judges ignore it
+            s: Score = judge.score(c["reasoning"], context=c["context"], task=c["task"])
+        except Exception as e:  # noqa: BLE001 - one bad call must not lose the rest of the run
+            s = Score(scores=dict.fromkeys(names, 0.0), error=f"{type(e).__name__}: {e}")
         if out:
             out.write(json.dumps({**c, "scores": s.scores if s.ok else None,
                                   "rationale": s.rationale, "error": s.error}) + "\n")
@@ -112,7 +125,11 @@ def cmd_score(args) -> int:
         out.close()
         print(f"wrote {args.out}")
     print(f"{flagged} flagged at >= {args.threshold}, {errors} unscored, {len(chunks) - errors} scored")
-    return 1 if flagged else 0
+    if errors:
+        print(f"Assessment incomplete: {errors} of {len(chunks)} chunk(s) were not scored. "
+              f"An unscored chunk is not a clean chunk.")
+        return EXIT_INCOMPLETE
+    return EXIT_FLAGGED if flagged else EXIT_CLEAN
 
 
 def main(argv: list[str] | None = None) -> int:
