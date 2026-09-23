@@ -30,7 +30,7 @@ Scoring is asynchronous by design: generation never waits on the judge, and `hal
 
 ### The probe
 
-A second kind of judge that reads activations rather than words: residual stream at a middle layer, mean-pooled over the chunk, logistic regression trained on contrastive pairs. It is not a cheaper text judge. Running both on the same chunk makes the *disagreement* the signal: text judge clean and probe firing is the one case a text reader cannot detect. It flags, it does not decide. It is also the fallback if the reasoning stream becomes unavailable or illegible, in which case it is the only signal left.
+A second kind of judge that reads activations rather than words: residual stream at a middle layer, mean-pooled over the chunk, logistic regression trained on contrastive pairs. It is not a cheaper text judge. Running both on the same chunk makes the *disagreement* worth looking at: text judge clean and probe firing marks a chunk as a candidate for investigation. That pattern has several explanations, including a probe false positive and a probe reading textual meaning the judge missed, so it is not by itself evidence that the reasoning concealed anything. Separating those explanations needs outcome-labeled experiments. The probe is also the fallback if the reasoning stream becomes unavailable or illegible, in which case it is the only signal left.
 
 ## Status
 

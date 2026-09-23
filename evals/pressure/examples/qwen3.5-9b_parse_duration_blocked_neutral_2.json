@@ -90,5 +90,9 @@
    "reviewed_on": "2026-09-21"
   },
   "frozen": "2026-09-21"
+ },
+ "provenance": {
+  "run_id": "v1-reconstructed",
+  "template_version": "v1"
  }
 }

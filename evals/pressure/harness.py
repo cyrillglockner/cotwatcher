@@ -41,6 +41,7 @@ import cotwatcher  # noqa: E402
 from evals.pressure.templates import TEMPLATES, Template  # noqa: E402
 
 HERE = Path(__file__).parent
+TEMPLATE_VERSION = "v1"   # bump when templates, rules or caps change; part of every run_id
 MAX_ACTIONS = 4
 MAX_TEST_RUNS = 2
 CONDITIONS = ("control", "blocked_neutral", "blocked_pressured")
@@ -100,7 +101,7 @@ def reasoning_of(msg) -> str:
     return extra.get("reasoning") or extra.get("reasoning_content") or ""
 
 
-def episode(client, model: str, t: Template, condition: str, run: int, max_tokens: int, temperature: float) -> dict:
+def episode(client, model: str, t: Template, condition: str, run: int, max_tokens: int, temperature: float, run_id: str) -> dict:
     work = Path(tempfile.mkdtemp(prefix="cotwatcher-ep-"))
     test_file = f"test_{t.module}"
     (work / t.module).write_text(t.buggy_code)
@@ -179,6 +180,20 @@ def episode(client, model: str, t: Template, condition: str, run: int, max_token
     shutil.rmtree(work, ignore_errors=True)
     return {
         "id": f"{t.name}:{condition}#{run}", "model": model, "template": t.name, "condition": condition, "run": run,
+        # Provenance: score and label episodes against the instructions they were
+        # actually given, never against whatever the templates say later.
+        "provenance": {
+            "run_id": run_id,
+            "template_version": TEMPLATE_VERSION,
+            "opening_prompt": opening_prompt(t, condition),
+            "spec": t.spec,
+            "visible_tests": t.visible_tests + (t.contradictory_test if condition != "control" else ""),
+            "hidden_tests": t.hidden_tests,
+            "buggy_code": t.buggy_code,
+            "rules": RULES.format(module=t.module),
+            "max_actions": MAX_ACTIONS, "max_test_runs": MAX_TEST_RUNS,
+            "max_tokens": max_tokens, "temperature": temperature,
+        },
         "outcome": outcome, "seconds": round(time.time() - t0, 1),
         "turns": turns, "log": log, "report": report,
         "truth": {
@@ -206,7 +221,8 @@ def main() -> int:
     client = settings.model.client()
     templates = [t for t in TEMPLATES if not args.template or t.name in args.template]
     conditions = args.condition or list(CONDITIONS)
-    out = HERE / "episodes" / f"{re.sub(r'[^a-z0-9]+', '-', args.model.lower())}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.jsonl"
+    run_id = f"{re.sub(r'[^a-z0-9]+', '-', args.model.lower())}_{TEMPLATE_VERSION}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    out = HERE / "episodes" / f"{run_id}.jsonl"
     out.parent.mkdir(exist_ok=True)
     print(f"actor: {args.model} @ {settings.model.url}\nwriting: {out}\n")
 
@@ -214,7 +230,7 @@ def main() -> int:
         for t in templates:
             for cond in conditions:
                 for run in range(args.runs):
-                    ep = episode(client, args.model, t, cond, run, args.max_tokens, args.temperature)
+                    ep = episode(client, args.model, t, cond, run, args.max_tokens, args.temperature, run_id)
                     f.write(json.dumps(ep) + "\n"); f.flush()
                     tr = ep["truth"]
                     print(f"{ep['id']:<40} {ep['outcome']:<16} {ep['seconds']:>6.0f}s  hidden_ok={tr['hidden_suite_ok']!s:<5} "
