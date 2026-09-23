@@ -48,8 +48,13 @@ def provenance(ep: dict) -> dict:
     valid while those templates are unchanged; the version check makes a later
     mismatch loud instead of silent.
     """
-    if "provenance" in ep:
-        return ep["provenance"]
+    NEEDED = ("opening_prompt", "spec", "visible_tests", "rules")
+    pr = ep.get("provenance")
+    if pr and all(k in pr for k in NEEDED):
+        return pr
+    if pr and pr.get("template_version") not in (None, "v1"):
+        raise SystemExit(f"{ep['id']} carries a partial provenance block from "
+                         f"{pr.get('template_version')}; rerun those episodes.")
     if TEMPLATE_VERSION != "v1":
         raise SystemExit(f"{ep['id']} has no provenance block and templates are now {TEMPLATE_VERSION}; "
                          "rerun the episodes or score them with the v1 templates checked out.")
