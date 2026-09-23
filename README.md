@@ -167,7 +167,13 @@ Scoring is asynchronous by design: generation never waits on the judge, and `hal
 
 ### The probe
 
-A second kind of judge that reads activations rather than words: residual stream at a middle layer, mean-pooled over the chunk, logistic regression trained on contrastive pairs. It is not a cheaper text judge. Running both on the same chunk makes the *disagreement* worth looking at: text judge clean and probe firing marks a chunk as a candidate for investigation. That pattern has several explanations, including a probe false positive and a probe reading textual meaning the judge missed, so it is not by itself evidence that the reasoning concealed anything. Separating those explanations needs outcome-labeled experiments. The probe is also the fallback if the reasoning stream becomes unavailable or illegible, in which case it is the only signal left.
+A second scorer that reads the model's internal state instead of its words. It takes the activations from a middle layer while the model processes a chunk of reasoning, averages them, and feeds that to a logistic regression trained on pairs of examples that differ only in the behaviour.
+
+The point is not that it is cheaper than the text judge. The point is what happens when the two disagree. If the judge sees nothing and the probe fires, that chunk is worth a human look.
+
+What such a disagreement means is an open question. The probe may be wrong. Or it may have caught something in the text that the judge read past, which our own results make likely: the judge missed concerns that were written down plainly. Or the reasoning genuinely did not say what the activations show. Only the third would be evidence of concealment, and telling them apart needs experiments where the truth comes from outcomes rather than from either scorer.
+
+There is also a longer-term reason to build it. If models stop emitting readable reasoning, whether because providers hide it or because training pushes it into something illegible, the probe is the only signal left.
 
 ## Status
 
