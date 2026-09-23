@@ -44,20 +44,33 @@ def load(paths: list[str]) -> list[dict]:
     return recs
 
 
+def cache_key(r: dict, ex_id: str) -> str:
+    """Identity of a cached feature vector.
+
+    The activations depend on every input to the forward pass, not just the
+    chunk: the task and preceding context are part of the prompt, and the
+    model id, revision, dtype, device and probed layers change the numbers.
+    Hashing only the record id and reasoning let a stale vector survive a
+    change to any of those (Codex, 2026-09-23).
+    """
+    parts = [r["id"], r.get("prompt", ""), r.get("context", ""), r["reasoning"], ex_id]
+    return hashlib.sha1("\x00".join(parts).encode()).hexdigest()[:20]
+
+
 def features(recs: list[dict], model_key: str, ex: Extractor | None) -> tuple[dict[int, np.ndarray], Extractor | None]:
     cache = HERE / "cache" / model_key
     cache.mkdir(parents=True, exist_ok=True)
     per_layer: dict[int, list[np.ndarray]] = defaultdict(list)
     layers = None
+    if ex is None:
+        ex = Extractor(MODELS[model_key])   # needed for the cache identity
     for i, r in enumerate(recs):
-        key = hashlib.sha1((r["id"] + "|" + r["reasoning"]).encode()).hexdigest()[:16]
+        key = cache_key(r, ex.identity())
         f = cache / f"{key}.npz"
         if f.exists():
             z = np.load(f)
             feats = {int(k): z[k] for k in z.files}
         else:
-            if ex is None:
-                ex = Extractor(MODELS[model_key])
             feats = ex.pooled(r.get("prompt", ""), r.get("context", ""), r["reasoning"])
             np.savez(f, **{str(k): v for k, v in feats.items()})
         layers = layers or sorted(feats)
