@@ -29,9 +29,11 @@ A run where the judge fails on every chunk exits 2, never 0.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dataclasses import replace
@@ -40,6 +42,14 @@ from . import __version__, config
 from .judge import Score
 
 EXIT_CLEAN, EXIT_FLAGGED, EXIT_INCOMPLETE = 0, 1, 2
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
 class InputError(Exception):
@@ -86,6 +96,8 @@ def read_chunks(path: Path) -> list[dict]:
                 raise InputError(f"{where}: not valid JSON ({e.msg})")
             if not isinstance(rec, dict):
                 raise InputError(f"{where}: expected a JSON object, got {type(rec).__name__}")
+            if rec.get("record") == "manifest":
+                continue                      # provenance header written by trace/score
             text = _text_field(rec, where)
             out.append({"id": str(rec.get("id", f"{path.stem}#{n}")), "reasoning": text or "",
                         "task": rec.get("task", rec.get("prompt", "")) or "",
@@ -177,6 +189,8 @@ def read_tasks(path: Path) -> list[str]:
                 raise InputError(f"{path}:{n}: not valid JSON ({e.msg})")
             if not isinstance(rec, dict):
                 raise InputError(f"{path}:{n}: expected a JSON object")
+            if rec.get("record") == "manifest":
+                continue
             task = rec.get("task") or rec.get("prompt")
             if not isinstance(task, str) or not task.strip():
                 raise InputError(f"{path}:{n}: no usable task / prompt field")
@@ -207,6 +221,12 @@ def cmd_trace(args) -> int:
         raise InputError(f"cannot write {args.out}: {e.strerror or e}")
 
     with out:
+        out.write(json.dumps({"record": "manifest", "captured_at": _now(),
+                              "model": settings.model.model, "model_url": settings.model.url,
+                              "temperature": args.temperature, "max_tokens": args.max_tokens,
+                              "tasks_file": str(args.tasks), "n_tasks": len(tasks),
+                              "cotwatcher_version": __version__}) + "\n")
+        out.flush()
         for i, task in enumerate(tasks, 1):
             row = {"id": f"task{i}", "task": task, "reasoning": "", "answer": "",
                    "model": settings.model.model, "finish_reason": None,
@@ -267,7 +287,22 @@ def cmd_score(args) -> int:
     judge = settings.make_judge()
     names = judge.rubric.names
     width = max(len(n) for n in names)
-    out = open(args.out, "w", encoding="utf-8") if args.out else None
+    out = None
+    if args.out:
+        try:
+            out = open(args.out, "w", encoding="utf-8")
+        except OSError as e:
+            raise InputError(f"cannot write {args.out}: {e.strerror or e}")
+        # Which monitor produced these verdicts. Without it a saved file cannot
+        # be told apart from one scored by a different judge or rubric.
+        out.write(json.dumps({"record": "manifest", "scored_at": _now(),
+                              "judge_model": settings.judge.model, "judge_url": settings.judge.url,
+                              "judge_reasoning_effort": settings.judge_reasoning_effort,
+                              "rubric_path": str(settings.rubric_path) if settings.rubric_path else "bundled default",
+                              "rubric_categories": list(names), "rubric_sha": _sha(judge.rubric.to_prompt()),
+                              "threshold": t, "input": str(args.file),
+                              "cotwatcher_version": __version__}) + "\n")
+        out.flush()
     flagged = errors = 0
 
     print(f"{len(chunks)} chunk(s), judge {settings.judge.model} @ {settings.judge.url}\n")

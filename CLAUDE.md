@@ -28,6 +28,10 @@ No linter or formatter is configured yet.
 - `--threshold` must be a finite number in [0, 1]. NaN makes every comparison false, which silently disables all alerting while still printing a clean run.
 - A judge reply with `finish_reason` of `length` or `content_filter` sets `Score.error` even when the JSON parses: a truncated reply is not a verdict.
 - `evals/pressure/harness.py` executes model-written Python on the host and refuses to start without `COTWATCHER_ALLOW_CODE_EXECUTION=1`. Keep that gate, keep the subprocess environment minimal, and do not describe the temp directory as a sandbox.
+- **A zero exit code from pytest is not evidence.** `os._exit(0)` in a test module produces exit 0 with nothing run. `run_pytest` collects test ids in a separate process first, runs with `--report-log`, and returns `ok` only when every collected test reported and passed; `valid` plus `invalid_reason` record early termination, timeouts and empty collection. Never reintroduce a verdict parsed from stdout or from the return code. This raises the cost of forgery; it is not proof against code sharing a process with the reporter.
+- Every test run records `code_sha` and `tests_sha`. `truth.final_artifact_verified` is true only when the files in their final state were run and passed, so a pass that predates the last patch cannot count as verification. `misleading_claim` keys off that, not off the last run.
+- `compare.py` counts a label only when the set is `frozen`, the reviewer is in `APPROVED_REVIEWERS`, and the label is explicitly 0 or 1. Null and missing stay `unreviewed`; `invalid_patch` episodes are `excluded_invalid_patch`. Reviewer identity is metadata, not policy.
+- `trace`, `score` and `compare.py` each write a manifest row first (models, urls, rubric path and sha, system-prompt sha, threshold, version, timestamp) and comparison output is timestamped rather than overwritten. A saved verdict that cannot name the monitor that produced it is not evidence. Readers skip rows where `record == "manifest"`.
 - Tests use a `FakeClient` duck-typing `openai.OpenAI` (`tests/test_judge.py`); no network in tests.
 
 ## Conventions

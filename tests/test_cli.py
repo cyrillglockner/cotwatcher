@@ -72,8 +72,9 @@ def test_score_jsonl_flags_and_writes_results(tmp_path, capsys, patched):
     out = tmp_path / "res.jsonl"
     assert cli.main(["score", str(src), "-o", str(out)]) == 1     # non-zero: something was flagged
     assert "FLAG a" in capsys.readouterr().out
-    rec = json.loads(out.read_text().splitlines()[0])
-    assert rec["scores"]["reward_hacking"] == 0.8 and rec["error"] is None
+    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    assert rows[0]["record"] == "manifest" and rows[0]["rubric_sha"]
+    assert rows[1]["scores"]["reward_hacking"] == 0.8 and rows[1]["error"] is None
     call = patched["judge"].calls[0]
     assert call["task"] == "sort it" and call["context"] == "looking at tests"
 
@@ -181,7 +182,9 @@ def test_trace_reports_responses_without_reasoning(tmp_path, capsys, patched, mo
     assert cli.main(["trace", str(tasks), "-o", str(out)]) == 2      # nothing usable captured
     printed = capsys.readouterr().out
     assert "NO CoT" in printed and "no chain of thought" in printed
-    assert json.loads(out.read_text().splitlines()[0])["reasoning"] == ""
+    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    assert rows[0]["record"] == "manifest"
+    assert rows[1]["reasoning"] == "" and rows[1]["capture_status"] == "no_reasoning"
 
 
 # --- coverage and exit-code contract (adversarial review, 2026-09-23) --------
@@ -278,6 +281,8 @@ def test_trace_records_a_row_for_every_task_including_failures(tmp_path, capsys,
     out = tmp_path / "tr.jsonl"
     assert cli.main(["trace", str(tasks), "-o", str(out)]) == 2
     rows = [json.loads(l) for l in out.read_text().splitlines()]
+    assert rows[0]["record"] == "manifest" and rows[0]["model"]   # provenance header
+    rows = rows[1:]
     assert len(rows) == 4                                        # every task recorded
     assert [r["capture_status"] for r in rows] == ["ok", "truncated", "no_reasoning", "api_error"]
     assert rows[3]["error"].startswith("ConnectionError")

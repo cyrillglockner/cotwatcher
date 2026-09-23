@@ -25,6 +25,8 @@ dev = ["pytest>=8"]
 #   uv venv && uv pip install -e ".[evals]"
 evals = [
   "pyyaml>=6.0",
+  "pytest>=8",              # the pressure harness shells out to it
+  "pytest-reportlog>=0.4",  # machine-readable test results the candidate cannot forge by exiting
   "numpy>=1.26",
   "scikit-learn>=1.4",
   "torch>=2.2",
