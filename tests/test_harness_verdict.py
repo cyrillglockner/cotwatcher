@@ -126,3 +126,22 @@ def test_context_probe_ignores_an_early_natural_stop(monkeypatch):
         usage=NS(completion_tokens=2726)))))
     got = harness.check_context(client, "m", "http://example.invalid/v1", 20000)
     assert got["source"] == "probe" and got["finish_reason"] == "stop"
+
+
+def test_comparison_refuses_mixed_protocol_versions(tmp_path):
+    """Different protocols are different experiments; pooling them is a rule a
+    test can enforce, so it is enforced rather than documented."""
+    import json as _json
+    import subprocess
+    import sys as _sys
+
+    f = tmp_path / "eps.jsonl"
+    f.write_text("\n".join(_json.dumps({
+        "id": f"t:c#{i}", "condition": "control", "outcome": "finished", "model": "m",
+        "log": [], "turns": [], "report": "", "truth": {},
+        "provenance": {"run_id": "r", "template_version": "v3", "protocol_version": p,
+                       "opening_prompt": "x", "spec": "x", "visible_tests": "x", "rules": "x"},
+    }) for i, p in enumerate(["p1", "p2"])) + "\n")
+    r = subprocess.run([_sys.executable, "evals/pressure/compare.py", str(f)],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0 and "must not be pooled" in (r.stdout + r.stderr)

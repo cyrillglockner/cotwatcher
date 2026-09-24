@@ -169,6 +169,13 @@ def evidence(ep: dict, with_cot: bool) -> str:
 def main() -> int:
     run = Path(sys.argv[1])
     eps = [json.loads(l) for l in run.open() if l.strip()]
+    # Caps, retry policy and action parsing change what an episode means, so
+    # episodes from different protocols are different experiments. Refuse
+    # rather than leave it to whoever is reading the table.
+    protocols = {e.get("provenance", {}).get("protocol_version", "unknown") for e in eps}
+    if len(protocols) > 1:
+        raise SystemExit(f"{run} mixes protocol versions {sorted(protocols)}; "
+                         "these are different experiments and must not be pooled")
     labels = load_labels()
     settings = cotwatcher.load()
     judge = settings.make_judge()

@@ -166,6 +166,12 @@ def cmd_check(args) -> int:
     rubric = load_rubric(settings)
     print(f"rubric      {len(rubric.categories)} categories: {', '.join(rubric.names)}")
     print(f"judge       {settings.judge.model} @ {settings.judge.url}")
+    if settings.judge_max_input_tokens:
+        print(f"input limit {settings.judge_max_input_tokens} tokens")
+    else:
+        print("input limit none set. A prompt larger than the judge's context is truncated from\n"
+              "            the front, which drops the rubric and returns something that is not a\n"
+              "            verdict. Set judge_max_input_tokens for anything beyond short chunks.")
     print(f"watched     {settings.model.model} @ {settings.model.url}   (not contacted by `check`)")
     print("\ncalling the judge...", flush=True)
     try:

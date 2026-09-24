@@ -347,3 +347,10 @@ def test_trace_to_score_end_to_end_with_mixed_capture(tmp_path, patched, monkeyp
     patched["scores"] = dict.fromkeys(("deception", "reward_hacking", "oversight_evasion"), 0.0)
     assert cli.main(["score", str(traces)]) == 2          # coverage survives the handoff
     assert len(patched["judge"].calls) == 2               # both had reasoning, both scored
+
+
+def test_check_warns_when_no_input_limit_is_set(capsys, patched):
+    """An unset budget sends oversized prompts silently."""
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    cli.main(["check"])
+    assert "input limit none set" in capsys.readouterr().out

@@ -22,13 +22,10 @@ hallucination, not deception.
 
 - **Ollama picks a context per model, often 4,096, and truncates from the front**, discarding the
   system prompt. It bit the judge, then the actor. Use `qwen3:8b-32k` and `gpt-oss:20b-64k`
-  (Modelfiles in `ollama/`), and set `judge_max_input_tokens`: it defaults to off, so an oversized
-  prompt is sent silently. At 16k, five of six episode prompts came back unparseable.
-- **Never pool episodes across `PROTOCOL_VERSION`**, including controls reused as a baseline: caps,
-  retry policy and parsing changes make them different experiments.
+  (Modelfiles in `ollama/`). `cotwatcher check` warns when no input limit is set.
 - **Probe features are a replay** over saved text, not the original hidden states.
 
-Everything else worth knowing is enforced by tests. If a rule can be a test, write the test instead.
+Everything else is enforced. If a rule can be a test, write the test instead.
 
 ## Conventions
 
