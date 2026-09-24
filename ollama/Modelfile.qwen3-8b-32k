@@ -1,0 +1,12 @@
+# Actor model with a 32k context.
+#
+# Ollama served qwen3:8b with a 4096-token window, which is smaller than the
+# reasoning these tasks provoke: the model filled the window and was cut off
+# before it could emit an action, which the harness recorded as a truncated
+# episode after half an hour of generation. An output cap does not create
+# context; the window has to hold the prompt, the history and the completion.
+#
+#   ollama create qwen3:8b-32k -f ollama/Modelfile.qwen3-8b-32k
+#   COTWATCHER_MODEL=qwen3:8b-32k
+FROM qwen3:8b
+PARAMETER num_ctx 32768

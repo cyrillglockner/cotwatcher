@@ -56,7 +56,10 @@ import cotwatcher  # noqa: E402
 from evals.pressure.templates import TEMPLATES, Template  # noqa: E402
 
 HERE = Path(__file__).parent
-TEMPLATE_VERSION = "v3"   # bump when templates, rules or caps change; part of every run_id
+TEMPLATE_VERSION = "v3"
+# Bumped whenever the protocol changes: caps, retry policy, action parsing.
+# Episodes from different protocols are different experiments.
+PROTOCOL_VERSION = "p2"   # bump when templates, rules or caps change; part of every run_id
 MAX_ACTIONS = 6         # v1 used 4; five episodes ran out with a correct fix in hand
 MAX_UNPARSEABLE = 4     # verbose models explain first; the reminder usually works
 MAX_TEST_RUNS = 2
@@ -404,6 +407,8 @@ def episode(client, model: str, t: Template, condition: str, run: int, max_token
         "provenance": {
             "run_id": run_id,
             "template_version": TEMPLATE_VERSION,
+            "protocol_version": PROTOCOL_VERSION,
+            "max_unparseable": MAX_UNPARSEABLE,
             "opening_prompt": opening_prompt(t, condition),
             "spec": t.spec,
             "visible_tests": t.visible_tests + (t.contradictory_test if condition != "control" else ""),
@@ -413,6 +418,7 @@ def episode(client, model: str, t: Template, condition: str, run: int, max_token
             "max_actions": MAX_ACTIONS, "max_test_runs": MAX_TEST_RUNS,
             "max_tokens": max_tokens, "temperature": temperature,
             "request_timeout": getattr(client, "timeout", None),
+            "note_max_tokens": "per model call, not per episode",
         },
         "outcome": outcome, "seconds": round(time.time() - t0, 1),
         "turns": turns, "log": log, "report": report,
@@ -450,6 +456,27 @@ def require_opt_in() -> None:
         "    COTWATCHER_ALLOW_CODE_EXECUTION=1 python evals/pressure/harness.py ...")
 
 
+def check_context(client, model: str, want_tokens: int) -> dict:
+    """Ask the server for one long completion and see how much it will give.
+
+    Ollama serves a model with whatever context it chose, often 4096, and
+    truncates a longer conversation from the front. An output cap does not
+    create room: the window has to hold the prompt, the history and the
+    completion. A run whose actor is quietly cut off at 4096 produces
+    half-formed episodes that look like the model failing at the task.
+    """
+    probe = ("Count from 1 to 400, one number per line, with no other text. "
+             "Do not stop early.")
+    resp = client.chat.completions.create(
+        model=model, messages=[{"role": "user", "content": probe}],
+        temperature=0.0, max_tokens=want_tokens)
+    usage = getattr(resp, "usage", None)
+    produced = getattr(usage, "completion_tokens", None)
+    return {"completion_tokens": produced,
+            "finish_reason": resp.choices[0].finish_reason,
+            "requested": want_tokens}
+
+
 def main() -> int:
     require_opt_in()
     ap = argparse.ArgumentParser()
@@ -460,6 +487,7 @@ def main() -> int:
     ap.add_argument("--max-tokens", type=int, default=20000)   # blocked tasks draw 20k+ reasoning tokens
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--request-timeout", type=float, default=1800.0, help="seconds per model call")
+    ap.add_argument("--skip-context-check", action="store_true")
     args = ap.parse_args()
 
     settings = cotwatcher.load()
@@ -467,10 +495,22 @@ def main() -> int:
     client = settings.model.client().with_options(timeout=args.request_timeout)
     templates = [t for t in TEMPLATES if not args.template or t.name in args.template]
     conditions = args.condition or list(CONDITIONS)
-    run_id = f"{re.sub(r'[^a-z0-9]+', '-', args.model.lower())}_{TEMPLATE_VERSION}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    run_id = f"{re.sub(r'[^a-z0-9]+', '-', args.model.lower())}_{TEMPLATE_VERSION}-{PROTOCOL_VERSION}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     out = HERE / "episodes" / f"{run_id}.jsonl"
     out.parent.mkdir(exist_ok=True)
-    print(f"actor: {args.model} @ {settings.model.url}\nwriting: {out}\n")
+    ctx = check_context(client, args.model, args.max_tokens)
+    print(f"actor: {args.model} @ {settings.model.url}")
+    print(f"context check: asked for {ctx['requested']} tokens, server produced "
+          f"{ctx['completion_tokens']} (finish_reason={ctx['finish_reason']})")
+    if ctx["completion_tokens"] is not None and ctx["completion_tokens"] < args.max_tokens * 0.2:
+        print("\nThe server stopped far short of the requested length. Its context window is "
+              "probably smaller than these tasks need, and episodes will be cut off mid-thought "
+              "rather than reaching an action.\nBuild a larger variant, e.g.:\n"
+              "    ollama create qwen3:8b-32k -f ollama/Modelfile.qwen3-8b-32k\n"
+              "Pass --skip-context-check to run anyway.", flush=True)
+        if not args.skip_context_check:
+            return 1
+    print(f"writing: {out}\n")
 
     with out.open("w") as f:
         for t in templates:
