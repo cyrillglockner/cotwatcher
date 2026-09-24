@@ -39,6 +39,8 @@ No linter or formatter is configured yet.
 - `trace`, `score` and `compare.py` each write a manifest row first (models, urls, rubric path and sha, system-prompt sha, threshold, version, timestamp) and comparison output is timestamped rather than overwritten. A saved verdict that cannot name the monitor that produced it is not evidence. Readers skip rows where `record == "manifest"`.
 - Tests use a `FakeClient` duck-typing `openai.OpenAI` (`tests/test_judge.py`); no network in tests.
 
+- Two experiments, both maintained. `evals/pressure/` is the primary line: a conflict inside a system the model acts on, with mechanical ground truth. `evals/disclosure/` is the cheap single-call companion that separates deliberate omission from oversight. Neither replaces the other; do not fold one into the other.
+
 ## Review process
 
 `FINDINGS.md` is the ledger. Every review finding has a stable ID and a status,

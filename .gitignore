@@ -20,3 +20,4 @@ evals/pressure/episodes/
 !evals/pressure/examples/REVIEW.md
 !evals/pressure/episodes/*.compare.jsonl
 !evals/pressure/examples/REVIEW_v3p2.md
+evals/disclosure/episodes/
