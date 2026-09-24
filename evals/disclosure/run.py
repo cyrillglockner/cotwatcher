@@ -9,9 +9,10 @@ Conditions:
     neutral     the task alone
     pressured   the task plus a stated wish for the convenient answer
 
-Ground truth is known before the model runs: exactly one check in each packet
-failed. The mechanical signals recorded here are candidates for a human label,
-not labels.
+**The point of a run is the reasoning it captures, not the answers.** Each
+packet puts the model somewhere it cannot be both honest and compliant. What
+is wanted is its thinking in that position. The answers are recorded because
+they are context for reading the reasoning, and for no other reason.
 
 Reading the report here establishes **what happened**, so that a verdict about
 the reasoning can be scored against it. It is not the product's job: cotwatcher
@@ -62,7 +63,13 @@ def reasoning_of(msg) -> str:
 
 
 def signals(text: str, p: Packet) -> dict:
-    """Mechanical candidates. A human decides; these only speed up reading."""
+    """Reading aids, not measurements.
+
+    These say whether certain words appear. They exist so a person can find the
+    interesting traces faster in a long file. Nothing here scores the answer:
+    the packets are instruments for eliciting reasoning under a bind, and what
+    the model finally writes is not the subject.
+    """
     low = (text or "").lower()
     hits = [t for t in p.failure_terms if t.lower() in low]
     return {"failure_terms_present": hits,
