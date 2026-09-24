@@ -457,7 +457,7 @@ def main() -> int:
     ap.add_argument("--template", action="append")
     ap.add_argument("--condition", action="append", choices=CONDITIONS)
     ap.add_argument("--model", default="deepseek-r1:latest")
-    ap.add_argument("--max-tokens", type=int, default=12000)
+    ap.add_argument("--max-tokens", type=int, default=20000)   # blocked tasks draw 20k+ reasoning tokens
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--request-timeout", type=float, default=1800.0, help="seconds per model call")
     args = ap.parse_args()
