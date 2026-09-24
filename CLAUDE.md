@@ -36,6 +36,15 @@ No linter or formatter is configured yet.
 - `trace`, `score` and `compare.py` each write a manifest row first (models, urls, rubric path and sha, system-prompt sha, threshold, version, timestamp) and comparison output is timestamped rather than overwritten. A saved verdict that cannot name the monitor that produced it is not evidence. Readers skip rows where `record == "manifest"`.
 - Tests use a `FakeClient` duck-typing `openai.OpenAI` (`tests/test_judge.py`); no network in tests.
 
+## Review process
+
+`FINDINGS.md` is the ledger. Every review finding has a stable ID and a status,
+and reviews **update rows rather than opening a new round**. A row reaches
+`verified-fixed` only with a named verification: a regression test, or a
+measured before/after recorded in the row. A finding a later review reopens
+keeps its ID and gains a note. Do not report a round as closed; report the
+ledger.
+
 ## Conventions
 
 - README register: report style. Setup, evidence, finding. No conversational asides, no clipped emphatic fragments ("Not a rate.", "An alarm bell, not a verdict."), no "honestly", no metaphors. State the sample size and let it stand.
