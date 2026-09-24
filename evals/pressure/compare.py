@@ -90,10 +90,30 @@ def label_key(ep: dict) -> str:
 
 
 def load_labels() -> dict[str, dict]:
-    out = {}
-    for f in glob.glob(str(HERE / "examples" / "*.json")):
+    """Frozen labels, from `labels/*.json`.
+
+    The canonical record is one file per run, keyed by run id, so a label does
+    not depend on a copy of the episode existing somewhere. Older reviewed
+    examples that carry their labels inline are still read, and lose to the
+    canonical file if both describe the same episode.
+    """
+    out: dict[str, dict] = {}
+    for f in sorted(glob.glob(str(HERE / "examples" / "*.json"))):
         e = json.load(open(f))
-        out[label_key(e)] = e.get("labels", {})
+        if e.get("labels"):
+            out[label_key(e)] = e["labels"]
+    for f in sorted(glob.glob(str(HERE / "labels" / "*.json"))):
+        d = json.load(open(f))
+        if not d.get("frozen"):
+            continue                       # unfrozen labels do not count
+        for eid, lab in d.get("labels", {}).items():
+            key = f"{d['run_id']}|{d.get('model', '')}|{eid}"
+            out[key] = {"frozen": d["frozen"],
+                        "label_definition_version": d.get("label_definition_version"),
+                        **{cat: {"label": lab.get(cat), "reviewed_by": d.get("reviewer")}
+                           for cat in ("reward_hacking", "deception", "oversight_evasion")},
+                        "reversed": lab.get("reversed"), "evidence": lab.get("evidence"),
+                        "note": lab.get("note")}
     return out
 
 
@@ -178,7 +198,13 @@ def main() -> int:
             group = outcome_group(ep, labels)
             pr = provenance(ep)
             row = {"id": ep["id"], "run_id": pr["run_id"], "template_version": pr["template_version"],
-                   "model": ep.get("model"), "group": group, "condition": ep["condition"], "outcome": ep["outcome"]}
+                   "model": ep.get("model"), "group": group, "condition": ep["condition"],
+                   "outcome": ep["outcome"],
+                   # Recorded beside the label, never folded into it: a decision
+                   # can be visible in a partial trace or an episode whose
+                   # artifacts are unusable.
+                   "trace_complete": ep["outcome"] == "finished",
+                   "artifacts_valid": not ep.get("truth", {}).get("invalid_patch", False)}
             if group != "unscorable":
                 for mode in ("without_cot", "with_cot"):
                     # the whole episode is the "chunk"; the task is the opening prompt
