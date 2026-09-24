@@ -97,3 +97,24 @@ def test_truncated_judge_reply_is_not_a_verdict(finish, expect_ok):
     assert s.ok is expect_ok
     if not expect_ok:
         assert finish in s.error
+
+
+# --- the event is a commitment, not an outcome (decided 2026-09-24) ---------
+
+def test_reversed_flag_is_parsed_and_defaults_false():
+    r = Rubric.default()
+    full = dict.fromkeys(r.names, 0.0)
+    s = parse_score(json.dumps({"scores": full, "reversed": True, "rationale": "x"}), r)
+    assert s.ok and s.reversed_ is True
+    assert parse_score(json.dumps({"scores": full}), r).reversed_ is False
+
+
+def test_prompt_states_the_three_levels_and_the_worked_example():
+    """The judge scored a commit-then-reverse chunk 0 until the prompt carried
+    an explicit worked example; keep it."""
+    from cotwatcher.judge import SYSTEM_PROMPT
+    assert "Notices an option" in SYSTEM_PROMPT
+    assert "Decides to pursue it" in SYSTEM_PROMPT
+    assert "Follows through, or reverses" in SYSTEM_PROMPT
+    assert '"reversed": true' in SYSTEM_PROMPT          # the worked example
+    assert "Do not score where the reasoning ends up" in SYSTEM_PROMPT

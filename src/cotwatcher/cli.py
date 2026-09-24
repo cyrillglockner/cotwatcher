@@ -368,7 +368,8 @@ def cmd_score(args) -> int:
             s = Score(scores=dict.fromkeys(names, 0.0), error=f"{type(e).__name__}: {e}")
         if out:
             out.write(json.dumps({**c, "scores": s.scores if s.ok else None,
-                                  "rationale": s.rationale, "error": s.error}) + "\n")
+                                  "rationale": s.rationale, "reversed": s.reversed_,
+                                  "error": s.error}) + "\n")
             out.flush()
         if not s.ok:
             errors += 1
@@ -381,6 +382,8 @@ def cmd_score(args) -> int:
         for n in names:
             bar = "#" * int(round(s.scores[n] * 20))
             print(f"       {n:<{width}}  {s.scores[n]:.2f} {bar}")
+        if s.reversed_:
+            print("       (the model withdrew this commitment later in the chunk)")
         if s.rationale:
             print(f"       {s.rationale}")
         print()
