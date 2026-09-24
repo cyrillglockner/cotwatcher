@@ -286,7 +286,8 @@ def reasoning_of(msg) -> str:
     return extra.get("reasoning") or extra.get("reasoning_content") or ""
 
 
-def episode(client, model: str, t: Template, condition: str, run: int, max_tokens: int, temperature: float, run_id: str) -> dict:
+def episode(client, model: str, t: Template, condition: str, run: int, max_tokens: int,
+            temperature: float, run_id: str, ctx: dict | None = None) -> dict:
     work = Path(tempfile.mkdtemp(prefix="cotwatcher-ep-"))
     test_file = f"test_{t.module}"
     (work / t.module).write_text(t.buggy_code)
@@ -419,6 +420,7 @@ def episode(client, model: str, t: Template, condition: str, run: int, max_token
             "max_tokens": max_tokens, "temperature": temperature,
             "request_timeout": getattr(client, "timeout", None),
             "note_max_tokens": "per model call, not per episode",
+            "actor_context_tokens": (ctx or {}).get("context_tokens"),
         },
         "outcome": outcome, "seconds": round(time.time() - t0, 1),
         "turns": turns, "log": log, "report": report,
@@ -456,25 +458,45 @@ def require_opt_in() -> None:
         "    COTWATCHER_ALLOW_CODE_EXECUTION=1 python evals/pressure/harness.py ...")
 
 
-def check_context(client, model: str, want_tokens: int) -> dict:
-    """Ask the server for one long completion and see how much it will give.
+def check_context(client, model: str, url: str, want_tokens: int) -> dict:
+    """Find out how much context the server will actually give this model.
 
-    Ollama serves a model with whatever context it chose, often 4096, and
+    Ollama serves a model with whatever window it chose, often 4096, and
     truncates a longer conversation from the front. An output cap does not
     create room: the window has to hold the prompt, the history and the
-    completion. A run whose actor is quietly cut off at 4096 produces
-    half-formed episodes that look like the model failing at the task.
+    completion. A 4096-token actor fills its window mid-thought and never
+    reaches an action, which looks like the model failing at the task.
+
+    Asked of the server directly where that is possible, because generating
+    until something breaks is slow and ambiguous: a model that finishes early
+    produces a short completion for perfectly good reasons.
     """
-    probe = ("Count from 1 to 400, one number per line, with no other text. "
-             "Do not stop early.")
+    # Ask what the *loaded instance* is serving. /api/show reports the
+    # architecture's maximum, which for qwen3:8b is 40960 while Ollama actually
+    # serves it with 4096: the number that matters is the running one.
+    try:
+        import urllib.request
+
+        root = url.rstrip("/").removesuffix("/v1")
+        client.chat.completions.create(model=model, max_tokens=1,
+                                       messages=[{"role": "user", "content": "hi"}])
+        with urllib.request.urlopen(f"{root}/api/ps", timeout=30) as r:
+            for m in (json.loads(r.read()).get("models") or []):
+                if model in (m.get("name"), m.get("model")) and m.get("context_length"):
+                    return {"context_tokens": int(m["context_length"]), "source": "loaded instance"}
+    except Exception:  # noqa: BLE001 - any failure just means we ask the model instead
+        pass
+
+    # Fallback: force a completion that will not stop on its own, and see
+    # whether it is cut off at a length the window explains.
     resp = client.chat.completions.create(
-        model=model, messages=[{"role": "user", "content": probe}],
-        temperature=0.0, max_tokens=want_tokens)
+        model=model, temperature=0.0, max_tokens=want_tokens,
+        messages=[{"role": "user", "content":
+                   "Write the word 'and' repeatedly, separated by spaces, forever. Never stop."}])
     usage = getattr(resp, "usage", None)
     produced = getattr(usage, "completion_tokens", None)
-    return {"completion_tokens": produced,
-            "finish_reason": resp.choices[0].finish_reason,
-            "requested": want_tokens}
+    return {"context_tokens": None, "source": "probe",
+            "completion_tokens": produced, "finish_reason": resp.choices[0].finish_reason}
 
 
 def main() -> int:
@@ -498,16 +520,23 @@ def main() -> int:
     run_id = f"{re.sub(r'[^a-z0-9]+', '-', args.model.lower())}_{TEMPLATE_VERSION}-{PROTOCOL_VERSION}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     out = HERE / "episodes" / f"{run_id}.jsonl"
     out.parent.mkdir(exist_ok=True)
-    ctx = check_context(client, args.model, args.max_tokens)
+    ctx = check_context(client, args.model, settings.model.url, args.max_tokens)
     print(f"actor: {args.model} @ {settings.model.url}")
-    print(f"context check: asked for {ctx['requested']} tokens, server produced "
-          f"{ctx['completion_tokens']} (finish_reason={ctx['finish_reason']})")
-    if ctx["completion_tokens"] is not None and ctx["completion_tokens"] < args.max_tokens * 0.2:
-        print("\nThe server stopped far short of the requested length. Its context window is "
-              "probably smaller than these tasks need, and episodes will be cut off mid-thought "
-              "rather than reaching an action.\nBuild a larger variant, e.g.:\n"
-              "    ollama create qwen3:8b-32k -f ollama/Modelfile.qwen3-8b-32k\n"
-              "Pass --skip-context-check to run anyway.", flush=True)
+    need = args.max_tokens + 2000            # completion plus prompt and history
+    if ctx.get("context_tokens"):
+        print(f"context: {ctx['context_tokens']} tokens (per the server), need about {need}")
+        too_small = ctx["context_tokens"] < need
+    else:
+        produced, finish = ctx.get("completion_tokens"), ctx.get("finish_reason")
+        print(f"context: server produced {produced} tokens (finish_reason={finish}) for an "
+              f"open-ended prompt, need about {need}")
+        # Only a length stop tells us anything: an early natural stop does not.
+        too_small = finish == "length" and produced is not None and produced < need
+    if too_small:
+        print(f"\nThe window is smaller than these tasks need, so episodes will be cut off "
+              f"mid-thought rather than reaching an action.\nBuild a larger variant, e.g.:\n"
+              f"    ollama create qwen3:8b-32k -f ollama/Modelfile.qwen3-8b-32k\n"
+              f"Then use it as the actor. Pass --skip-context-check to run anyway.", flush=True)
         if not args.skip_context_check:
             return 1
     print(f"writing: {out}\n")
@@ -516,7 +545,8 @@ def main() -> int:
         for t in templates:
             for cond in conditions:
                 for run in range(args.runs):
-                    ep = episode(client, args.model, t, cond, run, args.max_tokens, args.temperature, run_id)
+                    ep = episode(client, args.model, t, cond, run, args.max_tokens, args.temperature,
+                                 run_id, ctx)
                     f.write(json.dumps(ep) + "\n"); f.flush()
                     tr = ep["truth"]
                     print(f"{ep['id']:<40} {ep['outcome']:<16} {ep['seconds']:>6.0f}s  hidden_ok={tr['hidden_suite_ok']!s:<5} "
