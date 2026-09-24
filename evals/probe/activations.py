@@ -7,7 +7,7 @@ and inside the <think> block, so the activations are of the model "reading"
 this reasoning as its own.
 
     from evals.probe.activations import Extractor
-    ex = Extractor("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
+    ex = Extractor(MODELS["qwen3-8b"])       # must be the *watched* model
     feats = ex.pooled(task, context, chunk)      # {layer_idx: np.ndarray[hidden]}
 """
 

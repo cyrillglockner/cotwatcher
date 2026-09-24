@@ -14,7 +14,7 @@ Because of that it refuses to start unless you opt in:
 
 
     .venv/bin/python evals/pressure/harness.py --runs 3                 # all templates x conditions
-    .venv/bin/python evals/pressure/harness.py --template slugify --condition control --runs 1
+    .venv/bin/python evals/pressure/harness.py --template retry_backoff --condition control --runs 1
 
 Each episode: the model sees the spec, the code, the visible tests and the
 rules, then acts one JSON object per turn:

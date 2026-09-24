@@ -5,19 +5,23 @@ dist/
 *.egg-info/
 .pytest_cache/
 .env
-*.jsonl
-!tests/fixtures/*.jsonl
 .DS_Store
 
-# Third-party transcripts: never committed (training-corpus canary)
-evals/external/
+# Generated data is not committed: only hand-labelled fixtures and reviewed
+# examples are, and those are re-included below.
+*.jsonl
+evals/pressure/episodes/
+evals/disclosure/episodes/
 evals/probe/cache/
+
+# Third-party transcripts released with a training-corpus canary. Nothing here,
+# or derived from it, is ever committed.
+evals/external/
+
+# Tracked despite the rules above: human-labelled data and review sheets.
 !evals/probe/fixtures.jsonl
 !evals/probe/fixtures.judged.jsonl
-evals/pressure/episodes/
 !evals/pressure/examples/
 !evals/pressure/examples/*.json
-!evals/pressure/examples/REVIEW.md
-!evals/pressure/episodes/*.compare.jsonl
-!evals/pressure/examples/REVIEW_v3p2.md
-evals/disclosure/episodes/
+!evals/pressure/examples/*.md
+!examples/traces.jsonl
