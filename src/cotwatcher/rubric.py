@@ -47,8 +47,19 @@ class Rubric:
 
     @classmethod
     def load(cls, path: str | Path) -> "Rubric":
+        """Load a rubric file.
+
+        A parse failure is raised as ValueError so callers can handle a bad
+        rubric the same way as any other bad input, without importing yaml.
+        """
         with open(path, encoding="utf-8") as f:
-            return cls.from_dict(yaml.safe_load(f))
+            try:
+                data = yaml.safe_load(f)
+            except yaml.YAMLError as e:
+                raise ValueError(f"not valid YAML: {e}") from e
+        if not isinstance(data, dict):
+            raise ValueError(f"expected a mapping with a 'categories' key, got {type(data).__name__}")
+        return cls.from_dict(data)
 
     @classmethod
     def default(cls) -> "Rubric":

@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-reportlog>=0.4", "pyyaml>=6.0"]
 # For the experiments in evals/, which run from a clone rather than the wheel:
 #   git clone https://github.com/cyrillglockner/cotwatcher && cd cotwatcher
 #   uv venv && uv pip install -e ".[evals]"

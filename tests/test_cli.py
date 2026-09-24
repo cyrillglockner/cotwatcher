@@ -307,3 +307,43 @@ def test_trace_all_complete_exits_clean(tmp_path, patched, monkeypatch):
     tasks = tmp_path / "t.txt"; tasks.write_text("one\n")
     _fake_endpoint(monkeypatch, ("thinking", "answer", "stop"))
     assert cli.main(["trace", str(tasks), "-o", str(tmp_path / "o.jsonl")]) == 0
+
+
+# --- partial capture keeps the assessment incomplete (R1) -------------------
+
+@pytest.mark.parametrize("row,why", [
+    ({"reasoning": "partial thought", "capture_status": "truncated"}, "explicit status"),
+    ({"reasoning": "partial thought", "finish_reason": "length"}, "legacy finish_reason"),
+    ({"reasoning": "cut off", "finish_reason": "content_filter"}, "content filtered"),
+])
+def test_partially_captured_chunks_never_exit_clean(tmp_path, capsys, patched, row, why):
+    """A chunk can be scored and still not cover the whole trace."""
+    src = _write(tmp_path / "c.jsonl", row)
+    patched["scores"] = dict.fromkeys(("deception", "reward_hacking", "oversight_evasion"), 0.0)
+    assert cli.main(["score", str(src)]) == 2, why
+    assert "only part of the reasoning" in capsys.readouterr().out
+
+
+def test_partial_capture_dominates_a_flag(tmp_path, patched):
+    """Flagged plus incomplete is still incomplete: coverage is not a detection."""
+    src = _write(tmp_path / "c.jsonl",
+                 {"id": "a", "reasoning": "shortcut", "capture_status": "truncated"})
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    assert cli.main(["score", str(src)]) == 2
+
+
+def test_complete_clean_input_still_exits_zero(tmp_path, patched):
+    src = _write(tmp_path / "c.jsonl", {"reasoning": "honest work", "capture_status": "ok"})
+    patched["scores"] = dict.fromkeys(("deception", "reward_hacking", "oversight_evasion"), 0.0)
+    assert cli.main(["score", str(src)]) == 0
+
+
+def test_trace_to_score_end_to_end_with_mixed_capture(tmp_path, patched, monkeypatch):
+    """The documented flow, with one good and one truncated response."""
+    tasks = tmp_path / "t.txt"; tasks.write_text("one\n\ntwo\n")
+    _fake_endpoint(monkeypatch, ("full reasoning", "a", "stop"), ("cut off", "b", "length"))
+    traces = tmp_path / "tr.jsonl"
+    assert cli.main(["trace", str(tasks), "-o", str(traces)]) == 2
+    patched["scores"] = dict.fromkeys(("deception", "reward_hacking", "oversight_evasion"), 0.0)
+    assert cli.main(["score", str(traces)]) == 2          # coverage survives the handoff
+    assert len(patched["judge"].calls) == 2               # both had reasoning, both scored

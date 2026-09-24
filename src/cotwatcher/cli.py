@@ -39,7 +39,7 @@ from pathlib import Path
 from dataclasses import replace
 
 from . import __version__, config
-from .judge import Score
+from .judge import SYSTEM_PROMPT, Score
 
 EXIT_CLEAN, EXIT_FLAGGED, EXIT_INCOMPLETE = 0, 1, 2
 
@@ -69,6 +69,31 @@ def _text_field(rec: dict, where: str) -> str | None:
             raise InputError(f"{where}: {f!r} must be a string, got {type(v).__name__}")
         return v
     return None
+
+
+PARTIAL_CAPTURE = ("truncated", "content_filtered", "no_reasoning", "api_error")
+
+
+def capture_status(rec: dict, text: str | None) -> str:
+    """How complete this trace is.
+
+    Rows written by `cotwatcher trace` carry the status. Rows imported from
+    somewhere else are classified from whatever termination metadata they have,
+    because a trace cut off at the token limit is partial evidence and a run
+    over partial evidence is not a complete assessment. A row with neither a
+    status nor a finish_reason is taken at face value: there is nothing to go
+    on, and that limitation belongs in the docs rather than in a guess.
+    """
+    if rec.get("capture_status"):
+        return str(rec["capture_status"])
+    if not text:
+        return "no_reasoning"
+    finish = rec.get("finish_reason")
+    if finish == "length":
+        return "truncated"
+    if finish == "content_filter":
+        return "content_filtered"
+    return "ok"
 
 
 def read_chunks(path: Path) -> list[dict]:
@@ -102,7 +127,7 @@ def read_chunks(path: Path) -> list[dict]:
             out.append({"id": str(rec.get("id", f"{path.stem}#{n}")), "reasoning": text or "",
                         "task": rec.get("task", rec.get("prompt", "")) or "",
                         "context": rec.get("context", "") or "",
-                        "capture_status": rec.get("capture_status", "ok" if text else "no_reasoning")})
+                        "capture_status": capture_status(rec, text)})
         if not out:
             raise InputError(f"{path}: no records")
         return out
@@ -115,7 +140,11 @@ def read_chunks(path: Path) -> list[dict]:
 
 def settings_for(args) -> config.Settings:
     """Settings from file and environment, with --rubric taking precedence."""
-    s = config.load(args.config)
+    try:
+        s = config.load(args.config)
+    except (OSError, ValueError) as e:      # missing file, malformed TOML, bad values
+        where = args.config or "cotwatcher.toml"
+        raise InputError(f"cannot load config {where}: {e}")
     if getattr(args, "rubric", None):
         path = Path(args.rubric)
         if not path.is_file():
@@ -124,9 +153,17 @@ def settings_for(args) -> config.Settings:
     return s
 
 
+def load_rubric(settings):
+    """The rubric, with a readable error for a missing or malformed file."""
+    try:
+        return settings.rubric()
+    except (OSError, ValueError) as e:
+        raise InputError(f"cannot load rubric {settings.rubric_path or '(bundled default)'}: {e}")
+
+
 def cmd_check(args) -> int:
     settings = settings_for(args)
-    rubric = settings.rubric()
+    rubric = load_rubric(settings)
     print(f"rubric      {len(rubric.categories)} categories: {', '.join(rubric.names)}")
     print(f"judge       {settings.judge.model} @ {settings.judge.url}")
     print(f"watched     {settings.model.model} @ {settings.model.url}   (not contacted by `check`)")
@@ -150,7 +187,7 @@ def cmd_check(args) -> int:
 
 
 def cmd_rubric(args) -> int:
-    print(settings_for(args).rubric().to_prompt())
+    print(load_rubric(settings_for(args)).to_prompt())
     return EXIT_CLEAN
 
 
@@ -214,7 +251,7 @@ def cmd_trace(args) -> int:
     # Every task produces exactly one row, whatever happened to it. A task that
     # errored or returned nothing is part of the coverage record; dropping it
     # would let a later `score` run report a clean result over an unknown subset.
-    counts = {"ok": 0, "truncated": 0, "no_reasoning": 0, "api_error": 0}
+    counts = {"ok": 0, "truncated": 0, "content_filtered": 0, "no_reasoning": 0, "api_error": 0}
     try:
         out = open(args.out, "w", encoding="utf-8")
     except OSError as e:
@@ -248,18 +285,21 @@ def cmd_trace(args) -> int:
                     status = "no_reasoning"
                 elif choice.finish_reason == "length":
                     status = "truncated"
+                elif choice.finish_reason == "content_filter":
+                    status = "content_filtered"
                 else:
                     status = "ok"
                 row["capture_status"] = status
                 counts[status] += 1
-                label = {"ok": "ok       ", "truncated": "TRUNCATED", "no_reasoning": "NO CoT   "}[status]
+                label = {"ok": "ok       ", "truncated": "TRUNCATED", "no_reasoning": "NO CoT   ",
+                         "content_filtered": "FILTERED "}[status]
                 print(f"{i:>3}. {label}  reasoning {len(row['reasoning']):>6} chars, "
                       f"answer {len(row['answer']):>6} chars")
             out.write(json.dumps(row) + "\n")
             out.flush()
 
     complete = counts["ok"]
-    incomplete = counts["truncated"] + counts["no_reasoning"] + counts["api_error"]
+    incomplete = sum(v for k, v in counts.items() if k != "ok")
     print(f"\nwrote {args.out}: {complete} complete, {counts['truncated']} truncated, "
           f"{counts['no_reasoning']} without reasoning, {counts['api_error']} failed")
     if counts["no_reasoning"]:
@@ -284,6 +324,7 @@ def cmd_score(args) -> int:
         raise InputError(f"--threshold must be a finite number in [0, 1], got {t!r}")
     settings = settings_for(args)
     chunks = read_chunks(Path(args.file))
+    load_rubric(settings)                  # fail here rather than inside the judge
     judge = settings.make_judge()
     names = judge.rubric.names
     width = max(len(n) for n in names)
@@ -300,7 +341,11 @@ def cmd_score(args) -> int:
                               "judge_reasoning_effort": settings.judge_reasoning_effort,
                               "rubric_path": str(settings.rubric_path) if settings.rubric_path else "bundled default",
                               "rubric_categories": list(names), "rubric_sha": _sha(judge.rubric.to_prompt()),
+                              "system_prompt_sha": _sha(SYSTEM_PROMPT),
                               "threshold": t, "input": str(args.file),
+                              "input_sha": _sha(Path(args.file).read_text(encoding="utf-8", errors="replace")),
+                              "judge_revision": "unknown (server-side)",
+                              "judge_context_tokens": "unknown (server-side)",
                               "cotwatcher_version": __version__}) + "\n")
         out.flush()
     flagged = errors = 0
@@ -344,11 +389,20 @@ def cmd_score(args) -> int:
         out.close()
         print(f"wrote {args.out}")
     assessed = len(chunks) - errors - uncaptured
+    # A truncated or filtered chunk can be scored, but only part of the model's
+    # reasoning was ever captured, so the run as a whole is not a full
+    # assessment however clean the scores look.
+    partial = [c for c in chunks if c["capture_status"] in PARTIAL_CAPTURE and c["reasoning"].strip()]
     print(f"{flagged} flagged at >= {args.threshold}, {assessed} assessed, "
           f"{errors} judge error(s), {uncaptured} without captured reasoning, {len(chunks)} total")
-    if errors or uncaptured:
-        print(f"Assessment incomplete: {errors + uncaptured} of {len(chunks)} chunk(s) were not assessed. "
-              "An unassessed chunk is not a clean chunk.")
+    if partial:
+        kinds = ", ".join(sorted({c["capture_status"] for c in partial}))
+        print(f"{len(partial)} chunk(s) carried only part of the reasoning ({kinds}); they were scored, "
+              "but the run does not cover the whole trace.")
+    if errors or uncaptured or partial:
+        n = errors + uncaptured + len(partial)
+        print(f"Assessment incomplete: {n} of {len(chunks)} chunk(s) were not fully assessed. "
+              "An unassessed or partly captured chunk is not a clean chunk.")
         return EXIT_INCOMPLETE
     return EXIT_FLAGGED if flagged else EXIT_CLEAN
 

@@ -71,7 +71,10 @@ def load(path: str | Path | None = None, env: dict[str, str] | None = None) -> S
     """Build Settings from defaults, then the TOML file, then the environment.
 
     `path` defaults to `$COTWATCHER_CONFIG`, then `./cotwatcher.toml` if present.
-    A missing file is fine; a file that fails to parse is not.
+    A missing file named explicitly is an error, as is one that fails to parse:
+    silently ignoring either would run with settings the caller did not choose.
+    `tomllib.TOMLDecodeError` is a ValueError, and a missing file is an OSError,
+    so callers can catch those two.
     """
     env = os.environ if env is None else env
     data: dict[str, Any] = {}

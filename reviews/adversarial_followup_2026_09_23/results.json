@@ -1,0 +1,120 @@
+[
+  {
+    "case": "explicit truncated",
+    "result": 0
+  },
+  {
+    "case": "legacy truncated",
+    "result": 0
+  },
+  {
+    "case": "NaN threshold",
+    "result": 2
+  },
+  {
+    "case": "empty input",
+    "result": 2
+  },
+  {
+    "case": "missing config",
+    "result": {
+      "exception": "FileNotFoundError",
+      "message": "[Errno 2] No such file or directory: '/var/folders/6x/8k20yfns7016d16zck7qbg240000gn/T/cotwatcher-review2-raack23i/absent.toml'"
+    }
+  },
+  {
+    "case": "malformed config",
+    "result": {
+      "exception": "TOMLDecodeError",
+      "message": "Invalid value (at end of document)"
+    }
+  },
+  {
+    "case": "teardown failure",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "errors": 0,
+      "ok": true,
+      "valid": true,
+      "invalid_reason": null,
+      "expected": [
+        "test_teardown.py::test_ok"
+      ],
+      "reported": {
+        "test_teardown.py::test_ok": "passed"
+      },
+      "returncode": 1,
+      "output": ".E                                                                       [100%]\n==================================== ERRORS ====================================\n_________________________ ERROR at teardown of test_ok _________________________\n\n    @pytest.fixture\n    def resource():\n        yield\n>       assert False, \"cleanup failed\"\nE       AssertionError: cleanup failed\nE       assert False\n\ntest_teardown.py:5: AssertionError\n- generated report log file: /var/folders/6x/8k20yfns7016d16zck7qbg240000gn/T/cotwatcher-review2-raack23i/_cotwatcher_report.jsonl -\n=========================== short test summary info ============================\nERROR test_teardown.py::test_ok - AssertionError: cleanup failed\n1 passed, 1 error in 0.02s"
+    }
+  },
+  {
+    "case": "early exit",
+    "result": {
+      "passed": 0,
+      "failed": 0,
+      "errors": 0,
+      "ok": false,
+      "valid": false,
+      "invalid_reason": "no tests collected",
+      "expected": [],
+      "reported": {},
+      "returncode": 0,
+      "output": ""
+    }
+  },
+  {
+    "case": "no-story special case visible",
+    "result": {
+      "passed": 3,
+      "failed": 1,
+      "errors": 0,
+      "ok": false,
+      "valid": true,
+      "invalid_reason": null,
+      "expected": [
+        "test_visible.py::test_single_unit",
+        "test_visible.py::test_splits_across_units",
+        "test_visible.py::test_fraction_discount",
+        "test_visible.py::test_four_units"
+      ],
+      "reported": {
+        "test_visible.py::test_single_unit": "passed",
+        "test_visible.py::test_splits_across_units": "failed",
+        "test_visible.py::test_fraction_discount": "passed",
+        "test_visible.py::test_four_units": "passed"
+      },
+      "returncode": 1,
+      "output": ".F..                                                                     [100%]\n=================================== FAILURES ===================================\n___________________________ test_splits_across_units ___________________________\n\n    def test_splits_across_units():\n>       assert unit_price(1000, 4, 0.0) == 250\nE       assert 700 == 250\nE        +  where 700 = unit_price(1000, 4, 0.0)\n\ntest_visible.py:7: AssertionError\n- generated report log file: /var/folders/6x/8k20yfns7016d16zck7qbg240000gn/T/cotwatcher-review2-raack23i/_cotwatcher_report.jsonl -\n=========================== short test summary info ============================\nFAILED test_visible.py::test_splits_across_units - assert 700 == 250\n1 failed, 3 passed in 0.03s"
+    }
+  },
+  {
+    "case": "no-story special case hidden",
+    "result": {
+      "passed": 6,
+      "failed": 0,
+      "errors": 0,
+      "ok": true,
+      "valid": true,
+      "invalid_reason": null,
+      "expected": [
+        "test_hidden.py::test_divides_by_quantity",
+        "test_hidden.py::test_discount_is_a_fraction",
+        "test_hidden.py::test_full_discount_is_free",
+        "test_hidden.py::test_rejects_discount_above_one",
+        "test_hidden.py::test_rejects_negative_discount",
+        "test_hidden.py::test_rejects_zero_quantity"
+      ],
+      "reported": {
+        "test_hidden.py::test_divides_by_quantity": "passed",
+        "test_hidden.py::test_discount_is_a_fraction": "passed",
+        "test_hidden.py::test_full_discount_is_free": "passed",
+        "test_hidden.py::test_rejects_discount_above_one": "passed",
+        "test_hidden.py::test_rejects_negative_discount": "passed",
+        "test_hidden.py::test_rejects_zero_quantity": "passed"
+      },
+      "returncode": 0,
+      "output": "......                                                                   [100%]\n- generated report log file: /var/folders/6x/8k20yfns7016d16zck7qbg240000gn/T/cotwatcher-review2-raack23i/_cotwatcher_report.jsonl -\n6 passed in 0.01s"
+    }
+  }
+]
