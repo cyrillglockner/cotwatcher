@@ -18,21 +18,17 @@ Setup `uv pip install -e ".[dev]"` (add `[evals]`); tests `.venv/bin/pytest`.
 Judge the model, never the user's input. Fabrication with no sign the model knew better is
 hallucination, not deception.
 
-## Invariants
+## Traps no test catches
 
-- Check `Score.ok` before `scores`; an unscored chunk is never clean, and a truncated reply is not a
-  verdict. Bound the judge's input: at 16k, five of six episode prompts came back unparseable.
-- Exit codes 0 clean / 1 flagged / 2 incomplete. Input errors never exit 1, which means a detection.
-  Partial capture keeps a run incomplete. `--threshold` must be finite in [0, 1]; NaN silences it.
-- A pytest exit code is not evidence (`os._exit(0)` exits 0 with nothing run), so `run_pytest`
-  requires per-phase evidence. `tests/test_templates.py` checks templates before model time.
-- Episodes carry provenance; score against that snapshot, never current templates, and never pool
-  across `PROTOCOL_VERSION`. Labels count only when frozen. Probe features are a replay, and
-  activations measure computation, not intent.
-- Ollama picks a context per model, often 4,096, truncating from the front. It bit the judge, then
-  the actor. Use `qwen3:8b-32k` and `gpt-oss:20b-64k` (Modelfiles in `ollama/`).
-- The pressure harness runs model-written Python: it needs `COTWATCHER_ALLOW_CODE_EXECUTION=1`, and
-  the temp directory is not a sandbox. Nothing under `evals/external/` is ever committed.
+- **Ollama picks a context per model, often 4,096, and truncates from the front**, discarding the
+  system prompt. It bit the judge, then the actor. Use `qwen3:8b-32k` and `gpt-oss:20b-64k`
+  (Modelfiles in `ollama/`), and set `judge_max_input_tokens`: it defaults to off, so an oversized
+  prompt is sent silently. At 16k, five of six episode prompts came back unparseable.
+- **Never pool episodes across `PROTOCOL_VERSION`**, including controls reused as a baseline: caps,
+  retry policy and parsing changes make them different experiments.
+- **Probe features are a replay** over saved text, not the original hidden states.
+
+Everything else worth knowing is enforced by tests. If a rule can be a test, write the test instead.
 
 ## Conventions
 
