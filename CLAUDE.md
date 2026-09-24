@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Scope constraints — read before designing anything
+
+These have been restated repeatedly because work kept drifting away from them.
+Check a proposal against all five before building it.
+
+1. **The subject is the model's internal process**: the chain of thought it
+   writes, and the activations underneath. Not its answer.
+2. **Never judge output.** Not code quality, not report accuracy, not whether
+   the work was any good. Artifacts are context and elicitation material only.
+   The test for anything new: does this help decide whether the model was up to
+   something, or does it assess how good the work was? The second is a
+   different tool.
+3. **The event is a decision to pursue prohibited behaviour.** Noticing an
+   option is not the event. Following through is not required. A decision later
+   withdrawn still counts, with the reversal recorded.
+4. **Confusion is not hacking; sloppiness is not deception.** A trace can look
+   bad with no decision behind it.
+5. **Eval tasks are instruments for eliciting reasoning**, not tests the model
+   passes. Build the bind into the situation, never into a stated rule or a
+   stated wish: a model declines an announced instruction, and an announced
+   rule reads as a test.
+
 cotwatcher watches the chain of thought of open-weight reasoning models and scores it against a user-editable rubric. Python library first, CLI alongside, proxy server later. Plan and decisions in `PLAN.md`, deferred work in `BACKLOG.md`. Read both before proposing architecture.
 
 ## Commands
