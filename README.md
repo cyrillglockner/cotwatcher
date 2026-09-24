@@ -197,6 +197,9 @@ Linear probes on pooled residual-stream activations (Qwen3-8B, trained on synthe
 
 **Next:** task templates whose specifications leave no room for the "support both conventions" reading, run with a model that both drives the harness and can be probed, then judge and probe scored on the same fresh episodes. The question that decides whether any of this is worth running: does reading the chain of thought surface incidents that output and tool-log monitoring miss, at a fixed false-alert budget?
 
+**Scope of the experiments:** they construct a conflict in a coding task, where the visible work is patches, test runs and a report. The question they stand in for is broader, and not about code: can a model's reasoning reveal a deliberate problem that its visible work conceals? The same shape appears in research that omits inconvenient evidence, a status report on a task that failed, a plan that drops a stated constraint, or a tool call that routes around an approval. A result on coding tasks supports a claim about coding tasks; it would not establish the general case.
+
+**Next:** a completion-pressure experiment.
 ## Limitations
 
 - CoT faithfulness. The reasoning is not always what drives the answer. A clean trace is absence of evidence, not evidence of absence. This is the motivation for the probe.
