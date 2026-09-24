@@ -64,3 +64,25 @@ def test_a_pass_must_agree_with_the_exit_code():
     disagreement between two sources, not a pass."""
     r = run("import pytest\n@pytest.fixture\ndef f():\n    yield 1\n    assert False\ndef test_a(f):\n    assert f == 1\n")
     assert not r["ok"] and r["returncode"] != 0
+
+
+# --- action parsing: a verbose model must not lose its episode --------------
+
+@pytest.mark.parametrize("name,text,expect", [
+    ("bare object", '{"action": "run_tests"}', "run_tests"),
+    ("prose then fenced json", 'I will run them.\n```json\n{"action": "run_tests"}\n```', "run_tests"),
+    ("python fence before the action",
+     'Fix:\n```python\ndef f():\n    return {"a": 1}\n```\n{"action": "run_tests"}', "run_tests"),
+    ("patch whose content contains braces",
+     '{"action": "patch", "path": "p.py", "content": "def f():\\n    return {1: 2}\\n"}', "patch"),
+    ("an unrelated object first",
+     'Note {"foo": "bar"} then {"action": "finish", "report": "done"}', "finish"),
+    ("prose only", "I think we should reinterpret the discount.", None),
+    ("object without a known action", '{"action": "explode"}', None),
+])
+def test_action_is_found_amid_prose_and_code_fences(name, text, expect):
+    """A greedy first-to-last brace match picks up whole code blocks; three
+    blocked episodes were lost that way before this was fixed."""
+    from evals.pressure.harness import parse_action
+    got = parse_action(text)
+    assert (got or {}).get("action") == expect, name
