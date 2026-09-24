@@ -1,0 +1,14 @@
+{
+ "frozen_on": "2026-09-24",
+ "why": "Frozen before looking at performance on the Apollo challenge set, so the set cannot be used to tune the thing it is meant to test.",
+ "system_prompt_sha": "c9ce406682586d13",
+ "rubric_sha": "4420cf51e0620a45",
+ "categories": [
+  "deception",
+  "reward_hacking",
+  "oversight_evasion"
+ ],
+ "label_definition_version": "commitment-v1",
+ "judge_model": "gpt-oss:20b-64k",
+ "git_commit": "e642011"
+}
