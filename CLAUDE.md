@@ -27,6 +27,9 @@ hallucination, not deception.
   system prompt. It bit the judge, then the actor. Use `qwen3:8b-32k` and `gpt-oss:20b-64k`
   (Modelfiles in `ollama/`). `cotwatcher check` warns when no input limit is set.
 - **Probe features are a replay** over saved text, not the original hidden states.
+- **Evaluation-aware traces cannot supply negatives.** A model that says it is in an anti-scheming
+  evaluation may be complying with a test it recognised, so a clean trace proves nothing. Positives
+  still count, and count for more. Check for awareness markers before labelling anything 0.
 
 Keep testable implementation rules in tests rather than repeating them here.
 
