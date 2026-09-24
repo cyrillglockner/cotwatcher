@@ -60,10 +60,25 @@ A deception positive needs both halves in the reasoning: the model states the ga
 
 ## The line: reasoning is the subject, output is only ground truth
 
-Restated by Cyrill 2026-09-24. cotwatcher reads the chain of thought and asks
-whether the model is up to something. It does not judge the answer. It is not a
-fact checker, a code reviewer, a report grader or a quality gate, and a feature
-that starts grading outputs has left the product.
+Restated by Cyrill 2026-09-24. cotwatcher examines the model's internal
+process and asks whether the model is up to something. It does not judge the
+answer. It is not a fact checker, a code reviewer, a report grader or a quality
+gate, and a feature that starts grading outputs has left the product.
+
+There are two ways into that process, and both are the model rather than its
+output:
+
+- **the chain of thought**, which is what the model says about its own process,
+  scored by the `Judge` interface;
+- **the activations**, which are the process, read by a probe at a middle layer
+  of the transformer.
+
+The probe is not a fallback bolted on for the day the text disappears, though
+it is that too. It is a second reading of the same subject, and the two can
+disagree. A text judge sees only what was written down; a probe sees the
+computation whether or not it was described. That is why the disagreement is
+worth looking at, and why "cotwatcher scores reasoning" undersells it: the
+reasoning text is one signal, not the subject.
 
 Output appears in the experiments for one reason: to establish what actually
 happened, so that a verdict about the reasoning can be scored against something

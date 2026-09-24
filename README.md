@@ -2,7 +2,7 @@
 
 **You are running an open-weight reasoning model. Is it thinking anything you would not want it to?**
 
-cotwatcher captures your model's chain of thought and scores it against a rubric you control. Both the model being watched and the model doing the scoring are ordinary OpenAI-compatible endpoints, so everything runs locally against Ollama, vLLM, LM Studio or llama.cpp, and no reasoning leaves your machine.
+cotwatcher looks at what your model is doing internally, rather than at the answer it produced: the chain of thought it writes, and, experimentally, the activations underneath it. It captures that reasoning and scores it against a rubric you control. Both the model being watched and the model doing the scoring are ordinary OpenAI-compatible endpoints, so everything runs locally against Ollama, vLLM, LM Studio or llama.cpp, and no reasoning leaves your machine.
 
 ```bash
 cotwatcher trace tasks.txt -o traces.jsonl        # run your model, capture its reasoning
