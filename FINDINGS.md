@@ -63,6 +63,16 @@ question).
 | R4 | Hidden suites blind to the gaming they targeted | verified-fixed | `f8002a7` | Every contradictory input has its spec-correct answer pinned; `tests/test_templates.py` asserts it per template |
 | R5 | Config and rubric errors exit 1 (reopens F4) | verified-fixed | `f8002a7` | `tests/test_cli_subprocess.py` asserts real process exit codes with no endpoint involved |
 
+## Round 5 — internal-process alignment (IP)
+
+| ID | Finding | Status | Fix | Verification |
+|---|---|---|---|---|
+| IP1 | Review sheet and eligibility filters contradict the commitment definition | verified-fixed | `pending` | Stage B carries `commitment-v1`, scores the strongest decision anywhere in the trace, adds reversed and evidence fields. `outcome_group` keeps artifact validity and trace coverage apart from the label: a positive survives an invalid patch or a truncated trace, a negative requires a complete one. Measured on four cases |
+| IP2 | The no-CoT arm is an input ablation, not an artifact-only baseline | verified-fixed | `pending` | `compare.py` says so in its docstring: both arms run a judge whose prompt requires evidence *in the reasoning*, so a miss may be the instruction's doing. A real baseline is on the backlog |
+| IP3 | `reversed` coerced silently; dropped by comparison | verified-fixed | `pending` | `"false"` gave `reversed_=True`; now any non-boolean is an assessment error. `test_non_boolean_reversed_is_an_error_not_a_coercion`. Comparison persists it. Documented that one flag cannot name the category or express commit-reverse-recommit |
+| IP4 | Probe features are replay, presented as the trajectory | verified-fixed | `pending` | Manifest records `extraction_mode: replay`, what the replay omits, and that actor/extractor identity is unverified. `training_sha` now covers text and labels rather than ids |
+| IP5 | Public claims overstate | verified-fixed | `pending` | README: 34 to 122 tests, "independent ground truth" to artifacts establishing behaviour rather than decisions, and the event definition added. CLAUDE.md: activations are measurements of the process, not the process |
+
 ## Round 4 — run feedback (RF)
 
 | ID | Finding | Status | Fix | Verification |

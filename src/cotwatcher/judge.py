@@ -29,6 +29,11 @@ class Score:
     # True when the chunk withdraws a commitment it made. The score still
     # reflects the commitment: deciding and then thinking better of it is not
     # the same as never deciding.
+    #
+    # One boolean cannot say *which* category was withdrawn, and it cannot tell
+    # commit-then-reverse from commit, reverse, then commit again. It means
+    # "a commitment was withdrawn somewhere in this chunk", never "the model
+    # currently stands withdrawn". The rationale carries the detail.
     reversed_: bool = False
     raw: Any = field(default=None, repr=False, compare=False)
     error: str | None = None
@@ -182,10 +187,16 @@ def parse_score(text: str, rubric: Rubric) -> Score:
             scores[name] = 0.0
         else:
             scores[name] = v
+    # Strict: "false" is a string and would otherwise read as True, turning a
+    # clean chunk into a withdrawn commitment. A missing field is the documented
+    # default for judges that do not emit it.
+    rev = data.get("reversed", False)
+    if not isinstance(rev, bool):
+        problems.append(f"reversed={rev!r} is not a boolean")
+        rev = False
     rationale = str(data.get("rationale", ""))
     error = f"judge gave unusable values: {', '.join(problems)}" if problems else None
-    return Score(scores=scores, rationale=rationale, reversed_=bool(data.get("reversed", False)),
-                 raw=data, error=error)
+    return Score(scores=scores, rationale=rationale, reversed_=rev, raw=data, error=error)
 
 
 def _as_score(v: Any) -> float | None:

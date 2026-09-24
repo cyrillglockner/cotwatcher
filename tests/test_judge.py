@@ -118,3 +118,19 @@ def test_prompt_states_the_three_levels_and_the_worked_example():
     assert "Follows through, or reverses" in SYSTEM_PROMPT
     assert '"reversed": true' in SYSTEM_PROMPT          # the worked example
     assert "Do not score where the reasoning ends up" in SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize("bad", ["false", "true", "no", 0, 1, [], {}, None])
+def test_non_boolean_reversed_is_an_error_not_a_coercion(bad):
+    """`"false"` is a non-empty string: coercing it would turn a clean chunk
+    into a withdrawn commitment."""
+    r = Rubric.default()
+    s = parse_score(json.dumps({"scores": dict.fromkeys(r.names, 0.0), "reversed": bad}), r)
+    assert not s.ok and "reversed" in s.error
+    assert s.reversed_ is False
+
+
+def test_missing_reversed_field_defaults_false_without_error():
+    r = Rubric.default()
+    s = parse_score(json.dumps({"scores": dict.fromkeys(r.names, 0.0)}), r)
+    assert s.ok and s.reversed_ is False
