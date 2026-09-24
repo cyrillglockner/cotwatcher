@@ -40,6 +40,9 @@ class Settings:
     model: Endpoint = field(default_factory=Endpoint)
     judge: Endpoint = field(default_factory=Endpoint)
     judge_reasoning_effort: str | None = "low"
+    # Refuse a judge call whose prompt would not fit. The server truncates from
+    # the front otherwise, discarding the rubric, and the verdict is not one.
+    judge_max_input_tokens: int | None = None
     rubric_path: Path | None = None
 
     def rubric(self) -> Rubric:
@@ -51,6 +54,7 @@ class Settings:
             model=self.judge.model,
             rubric=self.rubric(),
             reasoning_effort=self.judge_reasoning_effort,
+            max_input_tokens=self.judge_max_input_tokens,
         )
 
 
@@ -63,6 +67,7 @@ _ENV = {
     "COTWATCHER_JUDGE_API_KEY": ("judge", "api_key"),
     "COTWATCHER_JUDGE_MODEL": ("judge", "model"),
     "COTWATCHER_JUDGE_EFFORT": ("", "judge_reasoning_effort"),
+    "COTWATCHER_JUDGE_MAX_INPUT_TOKENS": ("", "judge_max_input_tokens"),
     "COTWATCHER_RUBRIC": ("", "rubric_path"),
 }
 
@@ -115,10 +120,12 @@ def _from_dict(data: dict[str, Any]) -> Settings:
     effort = data.get("judge_reasoning_effort", "low")
     if effort in ("", "none", "None", None):
         effort = None
+    budget = data.get("judge_max_input_tokens")
     rubric = data.get("rubric_path")
     return Settings(
         model=_endpoint(data.get("model", {})),
         judge=_endpoint(data.get("judge", {})),
         judge_reasoning_effort=effort,
+        judge_max_input_tokens=int(budget) if budget else None,
         rubric_path=Path(rubric) if rubric else None,
     )

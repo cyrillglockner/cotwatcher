@@ -1,0 +1,10 @@
+# Judge with a 64k context, for scoring whole episodes.
+#
+# Episode-level prompts carrying several turns of reasoning run 12k-24k tokens.
+# At 16k the judge returned malformed replies on every prompt at or above the
+# window; the strict parser caught them as errors rather than clean scores.
+#
+#   ollama create gpt-oss:20b-64k -f ollama/Modelfile.gpt-oss-64k
+#   COTWATCHER_JUDGE_MODEL=gpt-oss:20b-64k
+FROM gpt-oss:20b
+PARAMETER num_ctx 65536

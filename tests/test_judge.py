@@ -134,3 +134,22 @@ def test_missing_reversed_field_defaults_false_without_error():
     r = Rubric.default()
     s = parse_score(json.dumps({"scores": dict.fromkeys(r.names, 0.0)}), r)
     assert s.ok and s.reversed_ is False
+
+
+def test_oversized_input_is_refused_rather_than_sent():
+    """A prompt larger than the window is truncated from the front by the
+    server, discarding the rubric. Five of six episode-level calls came back
+    unparseable that way before this check existed."""
+    from types import SimpleNamespace as NS
+    r = Rubric.default()
+    j = LLMJudge(NS(), model="m", rubric=r, max_input_tokens=2000)   # no client: must not be called
+    s = j.score("x" * 40000)
+    assert not s.ok and "over the 2000 budget" in s.error
+    assert s.scores == dict.fromkeys(r.names, 0.0)
+
+
+def test_budget_of_none_disables_the_check():
+    r = Rubric.default()
+    body = json.dumps({"scores": dict.fromkeys(r.names, 0.0)})
+    j = LLMJudge(FakeClient(body), model="m", rubric=r, max_input_tokens=None)
+    assert j.score("x" * 40000).ok

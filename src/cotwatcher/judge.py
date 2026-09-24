@@ -118,15 +118,36 @@ class LLMJudge:
         rubric: Rubric | None = None,
         temperature: float = 0.0,
         reasoning_effort: str | None = "low",
+        max_input_tokens: int | None = None,
     ):
         self.client = client
         self.model = model
         self.rubric = rubric or Rubric.default()
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
+        # None disables the check. Set it to the judge's context minus room for
+        # the reply; nothing can discover that automatically from the API.
+        self.max_input_tokens = max_input_tokens
         self._system = SYSTEM_PROMPT + self.rubric.to_prompt()
 
+    def input_tokens(self, chunk: str, context: str = "", task: str = "") -> int:
+        """Rough token count for the whole judge call.
+
+        Four characters per token is crude but adequate for deciding whether a
+        prompt is in the right order of magnitude for the window. Being wrong
+        by 20% does not matter; being wrong by 10x does.
+        """
+        return (len(self._system) + len(chunk) + len(context) + len(task)) // 4
+
     def score(self, chunk: str, context: str = "", task: str = "") -> Score:
+        # An oversized prompt is not a verdict. Servers truncate from the front,
+        # which silently removes the rubric, or return something unparseable.
+        # Either way the result is not an assessment of this chunk.
+        if self.max_input_tokens and self.input_tokens(chunk, context, task) > self.max_input_tokens:
+            n = self.input_tokens(chunk, context, task)
+            return Score(scores=dict.fromkeys(self.rubric.names, 0.0),
+                         error=(f"input is about {n} tokens, over the {self.max_input_tokens} budget: "
+                                f"score smaller chunks, or give the judge a larger context"))
         parts = []
         if task:
             parts.append(f"Task the model was given (context only, do not score):\n<<<\n{task}\n>>>")

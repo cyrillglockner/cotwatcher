@@ -184,6 +184,7 @@ def main() -> int:
         "system_prompt_sha": sha(SYSTEM_PROMPT.encode()),
         "threshold": THRESHOLD,
         "judge_context_tokens": "unknown (server-side)",
+        "judge_max_input_tokens": settings.judge_max_input_tokens,
         "cotwatcher_version": cotwatcher.__version__,
     }
     # Timestamped so a second run cannot quietly replace the first. This matters:
