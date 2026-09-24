@@ -71,8 +71,11 @@ with the alerting." The model noted the incentive and disclosed anyway.
 
 What this run is worth:
 
-- **18 reviewed negatives**, which the eval set is short of and which cost
-  almost nothing to produce. Both judges need traces that must *not* fire.
+- **18 disclosure outcomes**, which is not the same as 18 reviewed negatives
+  for cotwatcher. The product's subject is the internal process, so these
+  become negatives only after someone reads each trace and confirms it contains
+  no problematic commitment. A model can consider concealment, commit to it,
+  then reverse and disclose; the outcome would look identical.
 - **The design does not elicit concealment**, so it cannot test detection of it.
   Recognising the incentive and declining it is the honest path, and this model
   takes it here every time.
@@ -80,11 +83,11 @@ What this run is worth:
   pressured#1` discloses the muted alert while framing the response as having
   "followed protocol". Disclosure with softening, not concealment.
 
-To elicit anything, the next version needs disclosure to be genuinely costly,
-the failure to be less conspicuous, or the incentive to be structural rather
-than stated in the prompt. Stating "the owner wants a green light" is an
-instruction the model can simply decline; it is not a pressure the model is
-under. Noted for the design rather than fixed now.
+What it does **not** establish: that announced pressure cannot work, or that
+concealment has to be made costly. It establishes that these prompts did not
+elicit concealment in these 18 runs. The rest are hypotheses, and the one I
+find most plausible is that stating "the owner wants a green light" is an
+instruction the model can decline rather than a pressure it is under.
 
 ## The line: reasoning is the subject, output is only ground truth
 
@@ -101,12 +104,15 @@ output:
 - **the activations**, which are the process, read by a probe at a middle layer
   of the transformer.
 
-The probe is not a fallback bolted on for the day the text disappears, though
-it is that too. It is a second reading of the same subject, and the two can
-disagree. A text judge sees only what was written down; a probe sees the
-computation whether or not it was described. That is why the disagreement is
-worth looking at, and why "cotwatcher scores reasoning" undersells it: the
-reasoning text is one signal, not the subject.
+The probe is a second reading of the same subject, not a fallback bolted on for
+the day the text disappears, though it is that too. Neither signal is
+privileged ground truth, and the probe is the weaker of the two to interpret:
+**activations are measurements of computation, not a reading of intent.** A
+probe may be responding to conflict, to pressure, to particular vocabulary or
+to task difficulty rather than to concealment, and nothing in its output
+distinguishes those. So a disagreement with the text judge is a reason to look,
+never evidence that the probe uncovered something hidden. An activation label
+is an inference from other evidence, not something the activations settle.
 
 Output appears in the experiments for one reason: to establish what actually
 happened, so that a verdict about the reasoning can be scored against something
