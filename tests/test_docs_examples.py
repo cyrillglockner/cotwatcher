@@ -143,3 +143,16 @@ def test_claude_md_and_agents_md_cannot_drift():
     assert agents.is_file()
     assert claude.is_symlink() and claude.resolve() == agents.resolve()
     assert claude.read_text(encoding="utf-8") == agents.read_text(encoding="utf-8")
+
+
+def test_the_sdist_has_no_dangling_symlink():
+    """CLAUDE.md is a symlink to AGENTS.md. Packaging the link without its
+    target shipped a source distribution whose instructions could not be read
+    at all."""
+    import tomllib
+    root = GUIDE.parents[1]
+    include = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+    for path in root.iterdir():
+        if path.is_symlink() and path.name in include:
+            assert path.resolve().name in include, (
+                f"{path.name} is packaged but its target {path.resolve().name} is not")

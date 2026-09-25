@@ -54,7 +54,9 @@ force-include = { "docs/INTEGRATION.md" = "cotwatcher/docs/INTEGRATION.md", "doc
 
 [tool.hatch.build.targets.sdist]
 include = ["src", "tests", "docs", "ollama", "README.md", "LICENSE", "pyproject.toml",
-           "CLAUDE.md", "PLAN.md", "STATUS.md", "FINDINGS.md", "BACKLOG.md"]
+           # AGENTS.md before CLAUDE.md, which is a symlink to it: shipping the
+           # link without its target leaves a dangling file in the sdist.
+           "AGENTS.md", "CLAUDE.md", "PLAN.md", "STATUS.md", "FINDINGS.md", "BACKLOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
