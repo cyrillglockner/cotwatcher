@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-09-24.
+Last updated 2026-09-25.
 
 cotwatcher reads a model's chain of thought and decides whether the model committed to
 pursuing behaviour a rubric prohibits. It does not assess the model's output.
@@ -102,3 +102,14 @@ frozen scoring result above stands as the recorded evaluation; runs of the event
 these eight episodes are development work. Sample size is eight episodes; no rate should be read from it. The result above stands as
 recorded. Runs after a change to the judge are development evaluations against these eight,
 reported as such.
+
+
+## Agent integration documentation review — 2026-09-25
+
+The agent-written-glue MVP is documented in `docs/INTEGRATION.md`. Codex reviewed
+`859ab3a` and recorded INT1–INT4 in `FINDINGS.md`: the example input budget is ignored
+at its documented TOML location, the Python example bypasses configuration loading,
+the sample needs a judge transport-error boundary and clear background scheduling
+placement, and one check test can now call a real watched endpoint. These remain
+open pending verification of fixes. The review ran 195 tests successfully and
+excluded that endpoint-contacting test. No new detection measurement was made.

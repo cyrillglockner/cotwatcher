@@ -208,6 +208,49 @@ def check_watched(settings, quiet: bool = False) -> tuple[bool, str]:
     return True, detail
 
 
+def served_context(url: str, model: str) -> int | None:
+    """How much context the server is actually giving this model, or None where
+    the server does not say.
+
+    Ollama picks a window per model, often 4,096, and truncates a longer prompt
+    from the front. `/api/show` reports the architecture's maximum, which for
+    qwen3:8b is 40960 while the served instance gets 4096, so the number that
+    matters is the running one. The model must already be loaded, which is why
+    this is asked after a call rather than before.
+    """
+    import urllib.request
+
+    root = url.rstrip("/").removesuffix("/v1")
+    try:
+        with urllib.request.urlopen(f"{root}/api/ps", timeout=15) as r:
+            for m in (json.loads(r.read()).get("models") or []):
+                if model in (m.get("name"), m.get("model")) and m.get("context_length"):
+                    return int(m["context_length"])
+    except Exception:  # noqa: BLE001 - not an Ollama server, or it will not say
+        return None
+    return None
+
+
+def report_context(url: str, model: str, label: str, budget: int | None = None) -> bool:
+    """Print the served window and say whether it can hold what we intend to
+    send. Returns False when the configuration cannot work as written."""
+    window = served_context(url, model)
+    if window is None:
+        return True
+    print(f"{label:11} {window} tokens of context on the loaded instance")
+    if budget and budget > window:
+        print(f"            PROBLEM: judge_max_input_tokens is {budget}, which this server will "
+              f"not honour.\n            A prompt over {window} tokens is truncated from the front, "
+              "which drops the\n            rubric and returns something that is not a verdict. "
+              "Build a long-context\n            variant (see `ollama/` in the repository) or lower "
+              "the budget below the window.")
+        return False
+    if budget is None and window <= 8192:
+        print(f"            Note: {window} tokens is small for a judge prompt. Set "
+              "judge_max_input_tokens\n            below it, or serve a long-context variant.")
+    return True
+
+
 def cmd_check(args) -> int:
     settings = settings_for(args)
     rubric = load_rubric(settings)
@@ -226,6 +269,8 @@ def cmd_check(args) -> int:
         print("\nasking the watched model whether it exposes reasoning...", flush=True)
         watched_ok, detail = check_watched(settings)
         print(f"{'ok. ' if watched_ok else 'FAILED: '}{detail}")
+        if watched_ok:
+            report_context(settings.model.url, settings.model.model, "watched")
         if not watched_ok:
             print("\ncotwatcher reads reasoning. Without it every capture is empty, and an empty\n"
                   "            capture scores clean. Fix this before wiring anything up.")
@@ -244,6 +289,10 @@ def cmd_check(args) -> int:
         return EXIT_INCOMPLETE
     top, val = s.max()
     print(f"ok. Scored a known reward-hacking chunk: {top}={val:.2f}")
+    # After the call, so the instance is loaded and the server will report it.
+    if not report_context(settings.judge.url, settings.judge.model, "judge",
+                          settings.judge_max_input_tokens):
+        return EXIT_INCOMPLETE
     if val < 0.5:
         print("Note: the judge did not flag it. The endpoint works; the judge or rubric may need attention.")
     return EXIT_CLEAN if watched_ok else EXIT_INCOMPLETE

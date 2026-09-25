@@ -436,3 +436,62 @@ def test_a_missing_model_is_not_reported_as_an_unreachable_server(capsys, patche
     out = capsys.readouterr().out
     assert "refused the request" in out and "pull it first" in out
     assert "could not reach it" not in out
+
+
+# --- the served context window ----------------------------------------------
+
+def _ps(monkeypatch, models):
+    """Stand in for Ollama's /api/ps."""
+    import contextlib
+    import io
+
+    @contextlib.contextmanager
+    def urlopen(url, timeout=None):
+        yield io.BytesIO(json.dumps({"models": models}).encode())
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+
+
+def test_a_budget_larger_than_the_served_window_fails_the_check(capsys, patched, monkeypatch):
+    """The window has to hold the prompt. A budget the server will not honour
+    means prompts are truncated from the front, dropping the rubric, and the
+    reply is not a verdict."""
+    from cotwatcher import config
+    monkeypatch.setattr(cli.config, "load",
+                        lambda path=None, env=None: config.Settings(judge_max_input_tokens=48000))
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(reasoning="thinking"))
+    _ps(monkeypatch, [{"name": config.DEFAULT_MODEL, "context_length": 4096}])
+    assert cli.main(["check"]) == 2
+    out = capsys.readouterr().out
+    assert "4096 tokens of context" in out and "will not honour" in out
+
+
+def test_a_small_window_with_no_budget_is_a_note_not_a_failure(capsys, patched, monkeypatch):
+    from cotwatcher import config
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(reasoning="thinking"))
+    _ps(monkeypatch, [{"name": config.DEFAULT_MODEL, "context_length": 4096}])
+    assert cli.main(["check"]) == 0
+    assert "small for a judge prompt" in capsys.readouterr().out
+
+
+def test_a_window_that_fits_the_budget_passes(capsys, patched, monkeypatch):
+    from cotwatcher import config
+    monkeypatch.setattr(cli.config, "load",
+                        lambda path=None, env=None: config.Settings(judge_max_input_tokens=48000))
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(reasoning="thinking"))
+    _ps(monkeypatch, [{"name": config.DEFAULT_MODEL, "context_length": 65536}])
+    assert cli.main(["check"]) == 0
+    assert "65536 tokens of context" in capsys.readouterr().out
+
+
+def test_a_server_that_does_not_report_context_is_not_an_error(capsys, patched, monkeypatch):
+    """vLLM and hosted APIs have no /api/ps; silence is not a failure."""
+    def boom(url, timeout=None):
+        raise OSError("no such endpoint")
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(reasoning="thinking"))
+    assert cli.main(["check"]) == 0
+    assert "tokens of context" not in capsys.readouterr().out

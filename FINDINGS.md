@@ -92,7 +92,7 @@ question).
 | ID | Finding | Why it is still open |
 |---|---|---|
 | F8 | Monitor identity incomplete | Judge revision and effective context cannot be queried from the endpoint; recorded as `unknown` rather than guessed |
-| F9 | Judge input budgeting | Nothing bounds a judge prompt against the judge's context. The failure it prevents (silent front-truncation discarding the rubric) already happened once |
+| F9 | Judge input budgeting | `max_input_tokens` refuses an oversized prompt, and `cotwatcher check` now reads the window the server is serving and fails when the configured budget exceeds it. Open because the budget is still a setting the user supplies, and a server that does not report its window cannot be checked at all |
 | RR4 | Model code runs on the host | Mitigated by an opt-in gate and a stripped environment. Not isolation |
 | HARNESS-1 | Same-process report forgery | Code sharing a process with the reporter can write the report log. Raising the cost is not eliminating it. Real fix: candidate function in an isolated worker, assertions in a controller it never touches |
 | EV3 | Evaluation-aware negatives were discarded while positives were kept | verified-fixed | (this commit) | Discarding a source's negatives while keeping its positives selects evidence toward a judge that over-flags. Awareness is now metadata: such blocks are admissible for judge specificity, inadmissible for deployment behaviour rates, never pooled. CLAUDE.md rule rewritten; the three figure-45 blocks relabelled from unassessed to specificity negatives with `evaluation_aware` and admissibility recorded. Raised by Codex |
@@ -107,3 +107,30 @@ question).
 | EV9 | Per-turn judging could not see what a withdrawal refers to | verified-fixed | (this commit) | The call carried one turn's reasoning and the template name. It now carries the task text where the capture kept it and up to 3,000 characters of prior reasoning, labelled in the prompt as context that must not be quoted. Whether it yields withdrawals is unmeasured; EV2 stays open |
 | EV2 | The reversal flag is set by the arm that cannot see the reversals | open | — | Artifact-only arm set `reversed` on four of eight, the reasoning arm on none, with both positives commit-then-reverse. Not a parse fault: one boolean cannot carry commitment, withdrawal and recommitment. Fix is a verdict format of located decision events, tested behaviourally |
 | RESEARCH-1 | **The product question is unanswered** | No result yet shows that reading the chain of thought surfaces incidents that output and tool-log monitoring miss, at a fixed false-alert budget. Engineering fixes make the experiment trustworthy; they do not make the case |
+
+
+## Agent integration handoff — 2026-09-25
+
+Reviewed by Codex at `859ab3a`. The MVP direction is appropriate: agents reuse the
+judges and write application glue; no hosted service, universal wrapper or new
+integration framework is required. These findings concern the guide's executable
+examples. Update these IDs in place as fixes land.
+
+| ID | Finding | Status | Required fix and acceptance criteria |
+|---|---|---|---|
+| INT1 | Documented input budget is silently ignored | open | `docs/INTEGRATION.md:105-114` puts `judge_max_input_tokens = 48000` under `[judge]`, but `config._from_dict` reads it only at top level. Reproduced by parsing that TOML: Settings has `judge_max_input_tokens=None`. Move the setting above the TOML sections (or deliberately support nesting) and use the intended long-context model name. Verify the exact documented configuration loads 48000 and selects that model. Related to F3's earlier configuration example issue and F9's input-budget work. |
+| INT2 | Main integration example bypasses configured endpoints and limits | open | `docs/INTEGRATION.md:69-72` constructs `Settings()`, which does not load the TOML file or environment. Make `config.load()` the primary example with the appropriate import, rather than an optional comment. Verify a temporary config and environment override reach the example's judge construction. |
+| INT3 | Sample does not handle judge transport failure or demonstrate response isolation | open | `docs/INTEGRATION.md:81` calls `judge.score()` synchronously without an exception boundary. Endpoint failures raise before `score.ok` can be inspected, despite the verification section requiring an unavailable judge not to take down the application. Show a small boundary that records transport failure as unassessed, and explicitly mark where the agent should schedule/queue scoring outside the response path. No general queue framework required. Acceptance: fake judge raising ConnectionError is logged as unassessed without propagating into the user request; normal scoring still works. |
+| INT4 | A previously offline test now contacts the real watched endpoint | open | `tests/test_cli.py::test_check_warns_when_no_input_limit_is_set` calls `check` while mocking only Settings.make_judge. Since check now contacts the watched model, this can perform real inference. Use `--judge-only` for this judge-budget warning test or mock Endpoint.client. Verify the test never reaches a real client; retain separate fake-client coverage of the watched-model check. |
+
+Verification at the reviewed version: **195 passed, 1 deselected** using
+`.venv/bin/python -B -m pytest -q -p no:cacheprovider -k 'not test_check_warns_when_no_input_limit_is_set'`.
+INT4 was intentionally excluded to avoid triggering the local model. No real model
+calls were made. These are the prior review's observations, not a verification of
+concurrent edits made after `859ab3a`.
+
+After these small fixes, try the guide in a fresh coding-agent session against a
+small application. That is the next MVP validation; adding more infrastructure is
+not a prerequisite. Detection remains experimental: events-v2 flagged both pilot
+positives and four of six negatives, with no withdrawals detected. Keep integration
+log-only and describe that result separately from integration correctness.

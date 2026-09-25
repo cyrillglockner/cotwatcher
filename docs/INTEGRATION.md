@@ -47,8 +47,9 @@ export COTWATCHER_MODEL_URL=<its OpenAI-compatible base url>
 cotwatcher check
 ```
 
-Exit 0 means the watched model returned reasoning and the judge answered. Exit 2 means one of
-them did not, and the output says which. Do not proceed past a failing check by working around
+Exit 0 means the watched model returned reasoning, the judge answered, and the context the
+server is serving can hold what cotwatcher intends to send. Exit 2 means one of those failed,
+and the output says which. Do not proceed past a failing check by working around
 it: an endpoint that exposes no reasoning produces empty captures, and an empty capture scores
 clean, so the integration will look like a quiet monitor rather than a broken one.
 
@@ -94,7 +95,9 @@ Three rules for that loop, each of which has been got wrong here already:
    nothing and looked fine.
 3. **Bound the judge's input.** Set `judge_max_input_tokens` to the judge's context minus room
    for the reply. A server truncates an oversized prompt from the front, which discards the
-   rubric, and the answer it returns is not a verdict.
+   rubric, and the answer it returns is not a verdict. `cotwatcher check` compares your setting
+   against the window the server actually serves and fails when the setting cannot be honoured,
+   which is the common case with Ollama's defaults.
 
 ## Choosing the judge
 

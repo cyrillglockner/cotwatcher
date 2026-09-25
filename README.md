@@ -31,7 +31,7 @@ It does not judge output. Whether the work was any good, or the request acceptab
 
 `score` exits 0 (assessed, clean), 1 (flagged), or 2 (incomplete: a chunk could not be assessed, or the input or endpoint failed). A run that was not fully assessed never exits 0.
 
-⚠ Ollama picks a context per model and often lands at 4,096 tokens, then truncates from the front, which silently drops the rubric. `cotwatcher check` warns when no input limit is set; `ollama/` has Modelfiles for larger variants.
+⚠ Ollama picks a context per model and often lands at 4,096 tokens, then truncates from the front, which silently drops the rubric. `cotwatcher check` reads the window the server is actually serving and fails when it is smaller than the input limit you set; `ollama/` has Modelfiles for larger variants.
 
 ## Status
 
