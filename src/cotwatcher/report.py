@@ -65,13 +65,24 @@ pre.ctx mark { background:var(--quote); color:var(--fg); padding:1px 0; }
 SCRIPT = """
 const KEY = 'cotwatcher-review-' + REPORT.report_id;
 let reviews = {};
-try { reviews = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { reviews = {}; }
+// Storage is unavailable in a private window, under blocked site data, and on
+// some file: and data: origins. The page must work anyway, and must say so
+// rather than letting a reviewer assume their verdicts will survive the tab.
+let storageOk = true;
+try {
+  localStorage.setItem(KEY + '-probe', '1');
+  localStorage.removeItem(KEY + '-probe');
+  reviews = JSON.parse(localStorage.getItem(KEY) || '{}');
+} catch (e) { storageOk = false; reviews = {}; }
 
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(reviews)); } catch (e) {}
+  if (storageOk) { try { localStorage.setItem(KEY, JSON.stringify(reviews)); } catch (e) { storageOk = false; } }
   const n = Object.keys(reviews).length;
   document.getElementById('status').textContent =
-    n + ' of ' + REPORT.event_count + ' reviewed \\u2014 export to keep them';
+    n + ' of ' + REPORT.event_count + ' reviewed \\u2014 ' +
+    (storageOk ? 'export to keep them'
+               : 'this browser is not storing them, export before you close this tab');
+  document.getElementById('status').style.color = storageOk ? '' : 'var(--fail)';
 }
 function paint() {
   document.querySelectorAll('.ev[data-ev]').forEach(card => {

@@ -25,3 +25,6 @@ evals/external/
 !evals/pressure/examples/*.json
 !evals/pressure/examples/*.md
 !examples/traces.jsonl
+
+# Generated review pages
+review*.html

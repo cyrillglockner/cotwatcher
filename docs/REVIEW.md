@@ -43,8 +43,15 @@ cotwatcher check
 cotwatcher propose evals/pressure/episodes/qwen3-8b-32k_v3-p2_20260924T031725Z.jsonl -o proposals.jsonl
 ```
 
-Add `--id "unit_price_story:blocked_pressured#0"` for a single episode. One episode takes a few
-minutes on a laptop; all eight take a while, so start with one.
+Add `--id "unit_price_story:blocked_pressured#0"` for a single episode. Start with one: the judge
+is asked about each turn separately, so an episode costs one call per turn and takes a few minutes
+on a laptop.
+
+Per turn rather than per episode, because an episode of this kind runs to 90,000 characters and
+the sentence that decides anything sits among a hundred restatements of the same conflict. Asked
+about the whole episode the judge proposed nothing on a known positive; asked turn by turn it
+proposed five events on the same trace. It also makes an event's turn a fact rather than
+something the judge has to keep track of.
 
 The first line of the output is a manifest recording the judge model, the prompt and rubric
 hashes, the schema version and the hash of the episodes file. Proposals from different judges

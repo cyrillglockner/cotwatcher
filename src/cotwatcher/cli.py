@@ -443,13 +443,15 @@ def _read_episodes(path: Path, only: str | None) -> list[dict]:
     return out
 
 
-def _reasoning_of(episode: dict) -> str:
-    parts = []
-    for turn in episode.get("turns", []):
-        text = (turn.get("reasoning") or "").strip()
-        if text:
-            parts.append(f"[turn {turn.get('step', '?')}]\n{text}")
-    return "\n\n".join(parts)
+def _reasoning_turns(episode: dict) -> list[dict]:
+    """Turns carrying reasoning. Proposals are made per turn, not over the whole
+    episode: on the pilot traces a single turn runs to 29,000 characters and the
+    one sentence that decides anything sits among a hundred restatements of the
+    same conflict. Asked about a whole episode the judge proposed nothing; asked
+    about a turn it has a chance. It also makes the turn number of an event a
+    fact rather than something the judge has to remember.
+    """
+    return [t for t in episode.get("turns", []) if (t.get("reasoning") or "").strip()]
 
 
 def cmd_propose(args) -> int:
@@ -462,12 +464,16 @@ def cmd_propose(args) -> int:
     judge = EventJudge(settings.judge.client(), settings.judge.model, rubric=rubric,
                        reasoning_effort=settings.judge_reasoning_effort,
                        max_input_tokens=settings.judge_max_input_tokens)
+    judge_id = {"model": settings.judge.model, "prompt_sha": judge.prompt_sha,
+                "rubric_sha": _sha(rubric.to_prompt()), "schema_version": SCHEMA_VERSION,
+                "reasoning_effort": settings.judge_reasoning_effort, "unit": "turn"}
     try:
         out = open(args.out, "w", encoding="utf-8")
     except OSError as e:
         raise InputError(f"cannot write {args.out}: {e.strerror or e}")
     with out:
         out.write(json.dumps({"record": "manifest", "proposed_at": _now(),
+                              "unit": "turn",
                               "schema_version": SCHEMA_VERSION,
                               "judge_model": settings.judge.model, "judge_url": settings.judge.url,
                               "judge_reasoning_effort": settings.judge_reasoning_effort,
@@ -481,18 +487,31 @@ def cmd_propose(args) -> int:
         out.flush()
         failures = 0
         for episode in episodes:
-            verdict = judge.propose(_reasoning_of(episode), task=str(episode.get("template", "")))
-            verify_events(verdict, episode.get("turns", []))
-            failures += len(verdict.failures)
+            turns = _reasoning_turns(episode)
+            rows, summaries, errors, events = [], [], [], []
+            for turn in turns:
+                verdict = judge.propose(turn["reasoning"], task=str(episode.get("template", "")))
+                # Located against this turn alone, so an event cannot be placed
+                # in a turn the judge was never shown.
+                verify_events(verdict, [turn])
+                step = turn.get("step")
+                summaries.append(f"turn {step}: {verdict.summary}" if verdict.summary else f"turn {step}: —")
+                if verdict.error:
+                    errors.append(f"turn {step}: {verdict.error}")
+                events.extend(verdict.events)
+                rows.extend(_event_row(e) for e in verdict.events)
+            episode_failures = errors + [e.error for e in events if e.error]
+            failures += len(episode_failures)
             out.write(json.dumps({"id": episode.get("id"), "run": episode.get("run"),
-                                  "summary": verdict.summary,
-                                  "schema_version": verdict.schema_version,
-                                  "judge": verdict.judge, "error": verdict.error,
-                                  "events": [_event_row(e) for e in verdict.events]}) + "\n")
+                                  "summary": " | ".join(summaries),
+                                  "schema_version": SCHEMA_VERSION,
+                                  "judge": judge_id, "turns_proposed": len(turns),
+                                  "error": "; ".join(errors) or None,
+                                  "events": rows}) + "\n")
             out.flush()
-            located = sum(1 for e in verdict.events if e.located)
-            print(f"{episode.get('id')}: {len(verdict.events)} event(s), {located} located, "
-                  f"{len(verdict.failures)} failure(s)")
+            located = sum(1 for e in events if e.located)
+            print(f"{episode.get('id')}: {len(turns)} turn(s), {len(events)} event(s), "
+                  f"{located} located, {len(episode_failures)} failure(s)")
         print(f"\nwrote {args.out}. Runs against reviewed episodes are development evaluations.")
     return EXIT_INCOMPLETE if failures else EXIT_CLEAN
 
