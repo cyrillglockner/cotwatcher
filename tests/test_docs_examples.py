@@ -82,3 +82,26 @@ def test_every_command_the_guide_tells_an_agent_to_run_exists():
         with pytest.raises(SystemExit) as exit_info:
             main([command, "--help"])
         assert exit_info.value.code == 0, f"cotwatcher {command} is documented but not a command"
+
+
+def test_the_declared_version_matches_the_package():
+    """A manifest recording a version the code is not would misattribute every
+    artifact written by it."""
+    import tomllib
+
+    import cotwatcher
+    root = pathlib.Path(__file__).resolve().parents[1]
+    declared = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    assert cotwatcher.__version__ == declared
+
+
+def test_the_guides_are_packaged_with_the_wheel():
+    """An agent that pip installs cotwatcher must be able to read the guide
+    without reaching GitHub."""
+    import tomllib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    config = tomllib.loads((root / "pyproject.toml").read_text())
+    included = config["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    for source in ("docs/INTEGRATION.md", "docs/REVIEW.md"):
+        assert source in included, f"{source} would not ship in the wheel"
+        assert (root / source).is_file()
