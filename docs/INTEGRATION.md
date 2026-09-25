@@ -66,34 +66,48 @@ Capture it where the application already calls its model. A minimal integration:
 
 ```python
 from openai import OpenAI
+from cotwatcher import config
 from cotwatcher.cli import reasoning_of
-from cotwatcher.config import Settings
 
-settings = Settings()                      # or config.load("cotwatcher.toml")
+# config.load() reads cotwatcher.toml and the COTWATCHER_* environment.
+# Settings() would build defaults and ignore both, including the input budget.
+settings = config.load()
 judge = settings.make_judge()
 
 client = OpenAI(base_url=..., api_key=...)
 reply = client.chat.completions.create(model=..., messages=messages)
 reasoning = reasoning_of(reply.choices[0].message)
 
-if not reasoning:
-    log.warning("cotwatcher: no reasoning in this reply; nothing was assessed")
-else:
-    score = judge.score(reasoning, task=user_request)
+def assess(reasoning, task):
+    """Runs off the response path. Never raises into the caller."""
+    if not reasoning:
+        log.warning("cotwatcher: no reasoning in this reply; nothing was assessed")
+        return
+    try:
+        score = judge.score(reasoning, task=task)
+    except Exception as e:                 # transport, timeout, auth: the judge is a network call
+        log.warning("cotwatcher: not assessed, judge call failed: %s", e)
+        return                             # unassessed. Do not fall through to a clean path.
     if not score.ok:
-        log.warning("cotwatcher: not assessed: %s", score.error)   # never treat this as clean
+        log.warning("cotwatcher: not assessed: %s", score.error)
     elif score.over(0.5):
         log.warning("cotwatcher: %s — %s", score.over(0.5), score.rationale)
 ```
 
-Three rules for that loop, each of which has been got wrong here already:
+Call `assess` where it cannot delay the user: a thread, a task queue, or an `asyncio` task
+whose result you log. Scoring is a second inference and takes as long as the first.
 
-1. **Scoring is a second inference.** Do not block the user's response on it. Log the verdict
-   when it arrives, or queue it.
-2. **`score.ok is False` means unassessed, not clean.** Count it separately and surface it.
+Four rules for that loop, each of which has been got wrong in this repository already:
+
+1. **Scoring is a second inference.** Do not block the user's response on it.
+2. **An exception is not a verdict.** `judge.score()` is a network call and raises on transport
+   failure, before any `score.ok` check can run. Catch it and record the chunk as unassessed.
+   (`EventJudge.propose` differs: it returns a verdict carrying `error` rather than raising.
+   Handle both shapes if you use both.)
+3. **`score.ok is False` means unassessed, not clean.** Count it separately and surface it.
    Every silent-failure bug found in this repository had the same shape: something that assessed
    nothing and looked fine.
-3. **Bound the judge's input.** Set `judge_max_input_tokens` to the judge's context minus room
+4. **Bound the judge's input.** Set `judge_max_input_tokens` to the judge's context minus room
    for the reply. A server truncates an oversized prompt from the front, which discards the
    rubric, and the answer it returns is not a verdict. `cotwatcher check` compares your setting
    against the window the server actually serves and fails when the setting cannot be honoured,
@@ -106,18 +120,28 @@ leaves the machine. It does not have to be the model being watched, and it usual
 be. Configure it in `cotwatcher.toml` or by environment variable:
 
 ```toml
-[model]                      # what you watch
-url = "http://localhost:11434/v1"
-model = "qwen3:8b"
+judge_max_input_tokens = 48000   # top level, and the loader also accepts it under [judge]
 
-[judge]                      # what scores
+[model]                          # what you watch
 url = "http://localhost:11434/v1"
-model = "gpt-oss:20b"
-judge_max_input_tokens = 48000
+model = "qwen3:8b-32k"
+
+[judge]                          # what scores
+url = "http://localhost:11434/v1"
+model = "gpt-oss:20b-64k"
 ```
 
-With Ollama, build a long-context variant first. Ollama otherwise serves a context of its own
-choosing, often 4,096 tokens, and truncates from the front: see `ollama/` in this repository.
+Those model names are long-context variants, not the stock tags. Ollama otherwise serves a
+context of its own choosing, often 4,096 tokens, and truncates from the front, so a 48,000-token
+budget is a number nothing honours. Build them from the Modelfiles in `ollama/`:
+
+```bash
+ollama create gpt-oss:20b-64k -f ollama/Modelfile.gpt-oss-64k
+ollama create qwen3:8b-32k   -f ollama/Modelfile.qwen3-8b-32k
+```
+
+`cotwatcher check` reports the window each endpoint is actually serving and fails when the
+budget exceeds it, so run it after any change here.
 
 ## The rubric
 

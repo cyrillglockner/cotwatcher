@@ -117,6 +117,13 @@ def _from_dict(data: dict[str, Any]) -> Settings:
         data.setdefault("judge_reasoning_effort", judge_section["reasoning_effort"])
     if isinstance(judge_section, dict) and "judge_reasoning_effort" in judge_section:
         data.setdefault("judge_reasoning_effort", judge_section["judge_reasoning_effort"])
+    # The same accommodation for the input budget. Ignoring it where it reads
+    # naturally is worse than ignoring the effort: an unset budget sends an
+    # oversized prompt to a server that truncates it from the front, and the
+    # reply is not a verdict. The documented example put it here.
+    for key in ("max_input_tokens", "judge_max_input_tokens"):
+        if isinstance(judge_section, dict) and key in judge_section:
+            data.setdefault("judge_max_input_tokens", judge_section[key])
     effort = data.get("judge_reasoning_effort", "low")
     if effort in ("", "none", "None", None):
         effort = None

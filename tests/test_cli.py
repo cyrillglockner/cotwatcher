@@ -418,11 +418,26 @@ def test_trace_to_score_end_to_end_with_mixed_capture(tmp_path, patched, monkeyp
     assert len(patched["judge"].calls) == 2               # both had reasoning, both scored
 
 
-def test_check_warns_when_no_input_limit_is_set(capsys, patched):
-    """An unset budget sends oversized prompts silently."""
+def test_check_warns_when_no_input_limit_is_set(capsys, patched, monkeypatch):
+    """An unset budget sends oversized prompts silently.
+
+    `--judge-only` because `check` now contacts the watched model, and a test
+    that reaches a real endpoint is not offline: it was loading a local model.
+    """
     patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
-    cli.main(["check"])
+    monkeypatch.setattr(cli.config.Endpoint, "client",
+                        lambda self: pytest.fail("check --judge-only contacted an endpoint"))
+    cli.main(["check", "--judge-only"])
     assert "input limit none set" in capsys.readouterr().out
+
+
+def test_no_test_reaches_a_live_endpoint_through_check(monkeypatch, patched, capsys):
+    """A guard rather than a convention: any future `check` test that forgets to
+    mock the watched endpoint fails here instead of loading a 12 GB model."""
+    monkeypatch.setattr(cli.config.Endpoint, "client",
+                        lambda self: pytest.fail("a test contacted a real endpoint"))
+    patched["scores"] = dict.fromkeys(("deception", "reward_hacking", "oversight_evasion"), 0.0)
+    cli.main(["check", "--judge-only"])
 
 
 def test_a_missing_model_is_not_reported_as_an_unreachable_server(capsys, patched, monkeypatch):
