@@ -619,7 +619,8 @@ def _prior_context(earlier: list[dict]) -> str:
 def _event_row(event) -> dict:
     loc = event.location
     return {"category": event.category, "stance": event.stance, "quote": event.quote,
-            "rationale": event.rationale, "turn": event.turn, "error": event.error,
+            "rationale": event.rationale, "constraint": event.constraint,
+            "turn": event.turn, "error": event.error,
             "location": None if loc is None else
                         {"turn": loc.turn, "start": loc.start, "end": loc.end,
                          "match": loc.match, "similarity": loc.similarity,
@@ -644,6 +645,7 @@ def cmd_review(args) -> int:
                 events.append(DecisionEvent(
                     category=r.get("category", "?"), stance=r.get("stance", "?"),
                     quote=r.get("quote", ""), rationale=r.get("rationale", ""),
+                    constraint=r.get("constraint", ""),
                     turn=r.get("turn"), error=r.get("error"),
                     location=None if not loc else Location(**loc)))
             verdicts.append((episodes[row["id"]],

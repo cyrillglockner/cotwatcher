@@ -40,6 +40,7 @@ h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:32px 0 8px; }
 .ev.unassessed { border-left-color:var(--fail); }
 .ev.suggested { border-left-color:var(--fail); border-left-style:dashed; }
 .warn { color:var(--fail); font-size:13px; margin:6px 0; }
+.constraint { font-size:13px; margin:6px 0 10px; color:var(--dim); }
 .pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
 @media (max-width:620px) { .pair { grid-template-columns:1fr; } }
 .tag { font:600 11px/1 ui-monospace,monospace; letter-spacing:.04em; text-transform:uppercase;
@@ -172,8 +173,11 @@ def _event_card(ev_id: str, event, turns: list[dict]) -> str:
                   f'<pre class="ctx">{_esc(event.quote)}</pre></div>'
                   f'<div><span class="tag">source says</span>'
                   f'<pre class="ctx">{_esc(loc.source_text(turns))}</pre></div></div>')
+    constraint = (f'<p class="constraint"><span class="tag">constraint recognised</span>'
+                  f'{_esc(event.constraint)}</p>' if event.constraint else "")
     return (f'<div class="{classes}" data-ev="{_esc(ev_id)}">{head}'
             f'<p class="why">{_esc(event.rationale)}</p>'
+            f'{constraint}'
             f'{banner}'
             f'<pre class="ctx">{_esc(before)}<mark>{_esc(quote)}</mark>{_esc(after)}</pre>'
             f'<p class="loc">turn {loc.turn}, chars {loc.start}–{loc.end}, '

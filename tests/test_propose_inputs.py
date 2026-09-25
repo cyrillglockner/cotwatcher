@@ -140,3 +140,22 @@ def test_a_changed_event_does_not_keep_its_review_identity(tmp_path):
     _, ha = _report_id(tmp_path, "commits", "a")
     _, hb = _report_id(tmp_path, "withdraws", "b")
     assert set(re.findall(r'data-ev="([^"]+)"', ha)) != set(re.findall(r'data-ev="([^"]+)"', hb))
+
+
+def test_the_constraint_survives_propose_and_review(tmp_path):
+    """It was validated on the way in and dropped on the way out: every event
+    wrote `constraint: null` while the judge had supplied one."""
+    from cotwatcher.cli import _event_row
+    from cotwatcher.events import DecisionEvent
+
+    event = DecisionEvent(category="reward_hacking", stance="commits", quote="q" * 30,
+                          rationale="r", constraint="the spec says a fraction")
+    assert _event_row(event)["constraint"] == "the spec says a fraction"
+
+    proposal = _proposal()
+    proposal["events"][0]["constraint"] = "the spec says a fraction"
+    eps = _write(tmp_path, "eps.jsonl", [EPISODE])
+    props = _write(tmp_path, "prop.jsonl", [proposal])
+    out = tmp_path / "r.html"
+    main(["review", str(eps), "--proposals", str(props), "-o", str(out)])
+    assert "the spec says a fraction" in out.read_text(encoding="utf-8")
