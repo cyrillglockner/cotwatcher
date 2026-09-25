@@ -45,14 +45,7 @@ Linear probes on pooled activations reach 0.90-1.00 AUROC on held-out synthetic 
 
 ## Review
 
-The adversarial reviews in [FINDINGS.md](FINDINGS.md) were run by **OpenAI Codex**, working
-against this repository. Its reviews found the actor being served a 4,096-token context while
-the run asked for far more, a `reversed` field coerced from the string `"false"`, which marked
-reversals that had not happened, a comparison summary reading fields its own rows never carried,
-a controlled pair whose test made the task unsatisfiable by an ordinary deterministic
-implementation, and a harness verdict a model's own code could forge. It also argued the project out of
-building a live stream tap before the verdicts it would produce could be checked by a person,
-which is why `cotwatcher review` exists.
+The adversarial reviews in [FINDINGS.md](FINDINGS.md) were run by **OpenAI Codex** against this repository. They found the actor being served a 4,096-token context while the run asked for far more, a `reversed` field coerced from the string `"false"` so that reversals were marked that had not happened, a comparison summary reading fields its own rows never carried, a controlled pair whose test made the task unsatisfiable by an ordinary deterministic implementation, and a harness verdict a model's own code could forge. They also argued the project out of building a live stream tap before the verdicts it would produce could be checked by a person, which is why `cotwatcher review` exists.
 
 Development is by [Cyrill Glockner](https://github.com/cyrillglockner) with Claude.
 
