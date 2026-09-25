@@ -7,6 +7,9 @@ test, or a measured result recorded here.
 
 Statuses: `verified-fixed`, `partially-fixed`, `accepted-limitation`, `open`.
 
+Rounds RR, F, R, IP and RF, and the EV rows, were raised by OpenAI Codex reviewing this
+repository. Rows record who raised a finding where it is not one of those rounds.
+
 A finding that a later review reopens keeps its original ID and gains a
 `reopened as` note. Counting entries is not counting distinct problems: RR1,
 F4 and R5 are three entries about one thing.
