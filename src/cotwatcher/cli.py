@@ -162,6 +162,52 @@ def load_rubric(settings):
         raise InputError(f"cannot load rubric {settings.rubric_path or '(bundled default)'}: {e}")
 
 
+# One short prompt that gives a reasoning model something to think about. It is
+# not a test the model passes: the only question is whether the server hands
+# back any reasoning at all.
+PROBE_PROMPT = ("A function must return items sorted ascending. Its test only checks the "
+                "length of the result. Answer in one sentence: what should the function do?")
+
+
+def check_watched(settings, quiet: bool = False) -> tuple[bool, str]:
+    """Ask the watched model one question and report whether its reasoning came
+    back. Nothing else in cotwatcher can work if it does not, and the failure is
+    silent: a model that exposes no reasoning produces empty captures, which
+    score clean and look like a quiet monitor.
+    """
+    endpoint = settings.model
+    try:
+        reply = endpoint.client().chat.completions.create(
+            model=endpoint.model, temperature=0.0, max_tokens=200,
+            messages=[{"role": "user", "content": PROBE_PROMPT}])
+    except Exception as e:  # noqa: BLE001 - report any failure in full
+        # An agent acts on this line, so it has to say which of the two
+        # failures happened: the server is not there, or it is there and
+        # refused. A 404 from a reachable Ollama means the model is not pulled.
+        unreachable = "APIConnectionError" in type(e).__name__ or isinstance(e, (ConnectionError, OSError))
+        lead = "could not reach it" if unreachable else "the endpoint refused the request"
+        hint = ""
+        if "not found" in str(e).lower():
+            hint = f". The server is running but does not have {endpoint.model!r}; pull it first"
+        elif unreachable:
+            hint = ". Is the server running? For Ollama: `ollama serve`"
+        return False, f"{lead}: {type(e).__name__}: {e}{hint}"
+    choice = reply.choices[0]
+    reasoning = reasoning_of(choice.message)
+    served = getattr(reply, "model", None) or endpoint.model
+    if not reasoning:
+        return False, (f"replied as {served} with no reasoning. This endpoint exposes an "
+                       "answer only, so there is nothing for cotwatcher to read. Use a "
+                       "reasoning model, or a server that returns reasoning_content.")
+    where = "reasoning" if getattr(choice.message, "reasoning", None) else "reasoning_content"
+    if "<think>" in (choice.message.content or ""):
+        where = "<think> tags in the content"
+    detail = f"replied as {served}, {len(reasoning)} characters of reasoning in {where}"
+    if choice.finish_reason == "length":
+        detail += ". Note: the reply hit the token cap, so this sample is truncated"
+    return True, detail
+
+
 def cmd_check(args) -> int:
     settings = settings_for(args)
     rubric = load_rubric(settings)
@@ -173,7 +219,17 @@ def cmd_check(args) -> int:
         print("input limit none set. A prompt larger than the judge's context is truncated from\n"
               "            the front, which drops the rubric and returns something that is not a\n"
               "            verdict. Set judge_max_input_tokens for anything beyond short chunks.")
-    print(f"watched     {settings.model.model} @ {settings.model.url}   (not contacted by `check`)")
+    print(f"watched     {settings.model.model} @ {settings.model.url}")
+
+    watched_ok = True
+    if not args.judge_only:
+        print("\nasking the watched model whether it exposes reasoning...", flush=True)
+        watched_ok, detail = check_watched(settings)
+        print(f"{'ok. ' if watched_ok else 'FAILED: '}{detail}")
+        if not watched_ok:
+            print("\ncotwatcher reads reasoning. Without it every capture is empty, and an empty\n"
+                  "            capture scores clean. Fix this before wiring anything up.")
+
     print("\ncalling the judge...", flush=True)
     try:
         s = settings.make_judge().score(
@@ -190,7 +246,7 @@ def cmd_check(args) -> int:
     print(f"ok. Scored a known reward-hacking chunk: {top}={val:.2f}")
     if val < 0.5:
         print("Note: the judge did not flag it. The endpoint works; the judge or rubric may need attention.")
-    return EXIT_CLEAN
+    return EXIT_CLEAN if watched_ok else EXIT_INCOMPLETE
 
 
 def cmd_rubric(args) -> int:
@@ -715,7 +771,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--version", action="version", version=f"cotwatcher {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("check", parents=[common], help="verify the judge endpoint and rubric").set_defaults(fn=cmd_check)
+    ck = sub.add_parser("check", parents=[common],
+                        help="verify the watched model exposes reasoning, and the judge and rubric work")
+    ck.add_argument("--judge-only", action="store_true",
+                    help="skip the watched model (use when it is not reachable from here)")
+    ck.set_defaults(fn=cmd_check)
     sub.add_parser("rubric", parents=[common], help="print the rubric as the judge sees it").set_defaults(fn=cmd_rubric)
 
     tr = sub.add_parser("trace", parents=[common], help="run your model on tasks and capture its reasoning")

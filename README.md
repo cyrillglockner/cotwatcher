@@ -15,7 +15,7 @@ cotwatcher score traces.jsonl --rubric mine.yaml     # score it
 
 Needs Python 3.11+ and a running model server. Ollama is the shortest path and the default; vLLM, LM Studio, llama.cpp and hosted APIs work the same way.
 
-**What installs today:** capturing and scoring saved traces offline, and reviewing what the judge proposed. `cotwatcher propose` asks for decision events quoted from the reasoning, `cotwatcher review` verifies each quote against the source and renders one HTML page to confirm or reject them: [docs/REVIEW.md](docs/REVIEW.md). **Not built:** watching a live stream, enforcing a policy, halting a generation, the proxy.
+**What installs today:** capturing and scoring saved traces offline, and reviewing what the judge proposed. `cotwatcher propose` asks for decision events quoted from the reasoning, `cotwatcher review` verifies each quote against the source and renders one HTML page to confirm or reject them: [docs/REVIEW.md](docs/REVIEW.md). **Wiring it into a running application** means writing the capture yourself against the judge API; the guide for that, written for a coding agent, is [docs/INTEGRATION.md](docs/INTEGRATION.md). **Not built:** a `watch()` wrapper, a proxy, enforcing a policy or halting a generation. cotwatcher logs for review; it does not gate.
 
 ## What it looks for
 
@@ -66,4 +66,4 @@ uv venv && uv pip install -e ".[evals]"
 
 ⚠ `evals/pressure/` executes Python written by a model. A temp directory is not a sandbox; run it in a disposable VM. It refuses to start without `COTWATCHER_ALLOW_CODE_EXECUTION=1`.
 
-`PLAN.md` carries the decisions and their reasons, `FINDINGS.md` the review ledger, `BACKLOG.md` what is deferred. MIT.
+`docs/INTEGRATION.md` is the guide for wiring cotwatcher into an application, `docs/REVIEW.md` for reviewing what it found. `PLAN.md` carries the decisions and their reasons, `FINDINGS.md` the review ledger, `BACKLOG.md` what is deferred. MIT.

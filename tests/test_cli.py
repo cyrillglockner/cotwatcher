@@ -54,14 +54,83 @@ def test_rubric_prints_every_category(capsys, patched):
 
 def test_check_passes_when_the_judge_flags_the_probe_chunk(capsys, patched):
     patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
-    assert cli.main(["check"]) == 0
+    assert cli.main(["check", "--judge-only"]) == 0
     assert "reward_hacking=0.90" in capsys.readouterr().out
 
 
 def test_check_reports_an_unusable_reply(capsys, patched):
     patched["error"] = "judge returned non-JSON"
-    assert cli.main(["check"]) == 2
+    assert cli.main(["check", "--judge-only"]) == 2
     assert "unusable" in capsys.readouterr().out
+
+
+# --- the watched model ------------------------------------------------------
+
+def _watched(monkeypatch, message, model="watched-1", finish="stop", fail=None):
+    """Stand in for the watched endpoint's client."""
+    class Client:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**kw):
+                    if fail:
+                        raise fail
+                    return SimpleNamespace(model=model, choices=[SimpleNamespace(
+                        message=message, finish_reason=finish)])
+    monkeypatch.setattr(cli.config.Endpoint, "client", lambda self: Client())
+
+
+def _message(**kw):
+    base = {"content": "", "reasoning": None, "reasoning_content": None, "model_extra": {}}
+    return SimpleNamespace(**(base | kw))
+
+
+def test_check_reports_the_watched_model_exposing_reasoning(capsys, patched, monkeypatch):
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(reasoning="The test only checks the length.", content="Sort it."))
+    assert cli.main(["check"]) == 0
+    out = capsys.readouterr().out
+    assert "watched-1" in out and "characters of reasoning" in out
+
+
+def test_a_watched_model_with_no_reasoning_fails_the_check(capsys, patched, monkeypatch):
+    """The silent failure: empty captures score clean, so a monitor watching a
+    model that exposes nothing looks exactly like a quiet one."""
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(content="Sort it."))
+    assert cli.main(["check"]) == 2
+    out = capsys.readouterr().out
+    assert "no reasoning" in out and "scores clean" in out
+
+
+def test_reasoning_inside_think_tags_counts(capsys, patched, monkeypatch):
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(content="<think>only the length is checked</think>Sort it."))
+    assert cli.main(["check"]) == 0
+    assert "<think>" in capsys.readouterr().out
+
+
+def test_an_unreachable_watched_model_is_reported_not_raised(capsys, patched, monkeypatch):
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(), fail=ConnectionError("refused"))
+    assert cli.main(["check"]) == 2
+    assert "could not reach it" in capsys.readouterr().out
+
+
+def test_a_truncated_probe_still_passes_but_says_so(capsys, patched, monkeypatch):
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    _watched(monkeypatch, _message(reasoning="thinking and thinking"), finish="length")
+    assert cli.main(["check"]) == 0
+    assert "truncated" in capsys.readouterr().out
+
+
+def test_judge_only_never_contacts_the_watched_model(capsys, patched, monkeypatch):
+    called = []
+    monkeypatch.setattr(cli.config.Endpoint, "client",
+                        lambda self: called.append(1) or (_ for _ in ()).throw(AssertionError))
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    assert cli.main(["check", "--judge-only"]) == 0
+    assert called == []
 
 
 def test_score_jsonl_flags_and_writes_results(tmp_path, capsys, patched):
@@ -354,3 +423,16 @@ def test_check_warns_when_no_input_limit_is_set(capsys, patched):
     patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
     cli.main(["check"])
     assert "input limit none set" in capsys.readouterr().out
+
+
+def test_a_missing_model_is_not_reported_as_an_unreachable_server(capsys, patched, monkeypatch):
+    """The server answered; saying it could not be reached sends an agent to
+    fix the wrong thing."""
+    class NotFound(Exception):
+        pass
+    _watched(monkeypatch, _message(), fail=NotFound("Error code: 404 - model 'x' not found"))
+    patched["scores"] = {"deception": 0.0, "reward_hacking": 0.9, "oversight_evasion": 0.0}
+    assert cli.main(["check"]) == 2
+    out = capsys.readouterr().out
+    assert "refused the request" in out and "pull it first" in out
+    assert "could not reach it" not in out
