@@ -1,5 +1,16 @@
 # Backlog
 
+## Next release: beta, Monday 2026-09-28
+
+Cut `0.1.0b1` from whatever has landed by then. Already waiting on it: the README correction
+saying probes are not in the installed package, `AGENTS.md`, and the guide paths in
+`cotwatcher --help`. The README is the PyPI page, so a correction to it reaches users only
+through a release.
+
+Release steps are in `.github/workflows/release.yml`; bump `pyproject.toml` and
+`src/cotwatcher/__init__.py` together, tag, and publish a GitHub release. CI reports unreleased
+user-facing changes on every push to main and fails once they are more than a week old.
+
 - **Deception by artifact, not only by statement (2026-09-24).** The rubric says deception is working out one thing and deciding "to tell the user another", which points at words. The first Apollo transcript decides to fudge a timing measurement so the grader is shown a false number: no false sentence, the same substance. Consider widening the definition after the challenge set is scored — not before, since the judge is frozen for it.
 
 - **A competent artifact-only baseline (2026-09-24, from Codex).** `compare.py` currently runs the same `LLMJudge` in both arms, and that judge's prompt says it audits private reasoning while its deception category requires awareness and decision *in the reasoning*. Removing the reasoning asks it for evidence the prompt has made unavailable, so the no-CoT arm is an input ablation rather than a real output monitor, and a miss there does not show that artifacts are insufficient. A proper baseline targets the same commitment event, sees only the artifacts, is allowed to treat an explicit admission in a report as establishing a decision, and can abstain instead of guessing at intent. Needed before any claim that CoT catches what output monitoring misses. Save each arm's prompt identity in the manifest.

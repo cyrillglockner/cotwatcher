@@ -807,6 +807,37 @@ def _read_rows(path: Path) -> list[dict]:
     return rows
 
 
+DOCS_URL = "https://github.com/cyrillglockner/cotwatcher/blob/main/docs"
+
+
+def guide_paths() -> dict[str, str]:
+    """Where the guides are, for whoever is reading `--help`.
+
+    An agent's first move is usually `--help`, and it may never fetch a README.
+    The guides ship inside the wheel, so an installed copy names a local file;
+    a source checkout names the repository's own `docs/`; and if neither is
+    there, the URL, which is better than a path that does not exist.
+    """
+    out = {}
+    for name in ("INTEGRATION.md", "REVIEW.md"):
+        for candidate in (Path(__file__).parent / "docs" / name,
+                          Path(__file__).resolve().parents[2] / "docs" / name):
+            if candidate.is_file():
+                out[name] = str(candidate)
+                break
+        else:
+            out[name] = f"{DOCS_URL}/{name}"
+    return out
+
+
+def _guide_epilog() -> str:
+    guides = guide_paths()
+    return (f"Wiring cotwatcher into an application: {guides['INTEGRATION.md']}\n"
+            f"Reviewing what it found:               {guides['REVIEW.md']}\n\n"
+            "Start with `cotwatcher check`: it verifies the watched model exposes reasoning\n"
+            "and that the judge will accept a prompt of the size you configured.")
+
+
 def main(argv: list[str] | None = None) -> int:
     # These are accepted both before and after the subcommand, because the
     # documented form is `cotwatcher score FILE --rubric mine.yaml` and argparse
@@ -815,8 +846,11 @@ def main(argv: list[str] | None = None) -> int:
     common.add_argument("-c", "--config", help="path to cotwatcher.toml")
     common.add_argument("-r", "--rubric", help="path to a rubric YAML file (overrides the config)")
 
-    ap = argparse.ArgumentParser(prog="cotwatcher", parents=[common],
-                                 description="Score model reasoning against a rubric.")
+    ap = argparse.ArgumentParser(
+        prog="cotwatcher", parents=[common],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Score model reasoning against a rubric.",
+        epilog=_guide_epilog())
     ap.add_argument("--version", action="version", version=f"cotwatcher {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

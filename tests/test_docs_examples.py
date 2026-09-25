@@ -118,3 +118,28 @@ def test_the_readme_does_not_imply_probes_are_installed():
     package = pathlib.Path(cotwatcher.__file__).parent
     names = {p.stem for p in package.rglob("*.py")}
     assert not {"probe", "probes", "activations", "probe_judge"} & names
+
+
+def test_help_names_a_guide_that_exists():
+    """An agent's first move is `--help`. A path printed there that is not a
+    file sends it looking for documentation that appears to be missing."""
+    from cotwatcher.cli import guide_paths
+    for name, where in guide_paths().items():
+        assert name in where
+        assert where.startswith("http") or pathlib.Path(where).is_file(), where
+
+
+def test_help_falls_back_to_the_url_when_no_copy_is_installed(monkeypatch, tmp_path):
+    from cotwatcher import cli
+    monkeypatch.setattr(cli, "__file__", str(tmp_path / "cotwatcher" / "cli.py"))
+    assert all(v.startswith(cli.DOCS_URL) for v in cli.guide_paths().values())
+
+
+def test_claude_md_and_agents_md_cannot_drift():
+    """One file under two names: agents that look for AGENTS.md and agents that
+    load CLAUDE.md must get the same instructions."""
+    root = GUIDE.parents[1]
+    claude, agents = root / "CLAUDE.md", root / "AGENTS.md"
+    assert agents.is_file()
+    assert claude.is_symlink() and claude.resolve() == agents.resolve()
+    assert claude.read_text(encoding="utf-8") == agents.read_text(encoding="utf-8")

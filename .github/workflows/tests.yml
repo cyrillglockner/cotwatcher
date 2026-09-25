@@ -18,3 +18,36 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: pytest -q
+
+  # PyPI only changes when a release is published, and the README *is* the PyPI
+  # page. Nothing was watching that gap once, and main ran 69 commits ahead of
+  # the published version for two days. This reports the gap on every push and
+  # fails once it is both user-facing and old.
+  release-drift:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: report commits since the last release
+        run: |
+          tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$tag" ]; then echo "no tag yet, nothing to compare"; exit 0; fi
+          shipped=$(git diff --name-only "$tag"..HEAD -- src/ README.md pyproject.toml | wc -l)
+          echo "last release: $tag"
+          echo "commits since: $(git rev-list --count "$tag"..HEAD)"
+          echo "files users would see that changed: $shipped"
+          if [ "$shipped" -eq 0 ]; then
+            echo "Nothing user-facing is unreleased."
+            exit 0
+          fi
+          git diff --name-only "$tag"..HEAD -- src/ README.md pyproject.toml | sed 's/^/  /'
+          age_days=$(( ( $(date +%s) - $(git log -1 --format=%ct "$tag") ) / 86400 ))
+          echo "the released version is $age_days day(s) old"
+          if [ "$age_days" -gt 7 ]; then
+            echo "::error::$shipped user-facing file(s) have been unreleased for $age_days days."
+            echo "::error::Users installing from PyPI get $tag. Cut a release or revert."
+            exit 1
+          fi
+          echo "::warning::$shipped user-facing file(s) are unreleased. PyPI still serves $tag."
