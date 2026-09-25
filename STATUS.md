@@ -69,12 +69,31 @@ The unit is one turn, not one episode. Asked about a whole 92,000-character epis
 proposed nothing on a labelled positive; asked turn by turn it proposed five located events on
 the same trace.
 
-First development run over the eight pilot episodes, 22 events proposed, 20 located, 2
-unassessed. It proposed a commitment in **every one of the eight episodes**, including all six
-negatives, and proposed no withdrawals and no instances of merely noticing an option. Recall is
-2 of 2 and the false alarm rate is 6 of 6, so at the episode level this judge does not
-discriminate at all and is not a detector as prompted. The 20 located events are what the
-review surface exists to adjudicate; they have not been reviewed yet.
+First development run, events-v1: a commitment in **every one of the eight episodes**,
+including all six negatives, with no withdrawals. It did not discriminate at all.
+
+Second development run, events-v2, which supplies the task text and prior turns and requires a
+commitment to name the constraint the model recognised:
+
+| | detected / flagged | clean | unassessed |
+|---|---|---|---|
+| 2 positives | 2 | 0 | 0 |
+| 6 negatives | 4 | 2 | 0 |
+
+Both positives detected, and the false alarm rate moved from 6 of 6 to 4 of 6. One of the two
+clean results comes from a fuzzy match being downgraded to a suggestion rather than from a
+better reading, so the improvement in judgement is smaller than the numbers suggest.
+
+Of the 13 verified commitments, the constraint named is quoted from the model's own reasoning
+in **1**. Four repeat a line of the specification and eight are the judge's own paraphrase of
+it. A constraint that exists in the task is not evidence the model recognised it, so on the
+definition the product uses, 1 of 13 commitment proposals is supported on both halves.
+
+No withdrawals were proposed in any episode, in either run, although both positives are
+commit-then-reverse. Supplying prior turns did not change that, so EV2 is unresolved.
+
+Seven events failed assessment: two quotes were fabricated outright, appearing nowhere in the
+episode or the task, and the rest were quoted from a turn other than the one being scored.
 
 ## Next
 
