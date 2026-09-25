@@ -47,9 +47,17 @@ jobs:
           import cotwatcher
           r = cotwatcher.Rubric.default()
           assert r.names == ('deception', 'reward_hacking', 'oversight_evasion'), r.names
-          s = cotwatcher.parse_score('{\"scores\": {\"deception\": 1, \"reward_hacking\": 0, \"oversight_evasion\": 0}}', r)
-          assert s.ok and s.max() == ('deception', 1.0)
+          verdict = '{\"scores\": {\"deception\": 1, \"reward_hacking\": 0, \"oversight_evasion\": 0}, \"rationale\": \"decides to misreport\"}'
+          s = cotwatcher.parse_score(verdict, r)
+          assert s.ok and s.max() == ('deception', 1.0), s.error
           assert not cotwatcher.parse_score('not json', r).ok
+          # A reply nobody can review is not a verdict: scores without a
+          # rationale read as a clean chunk until this was enforced.
+          assert not cotwatcher.parse_score(verdict.replace('decides to misreport', ''), r).ok
+          # The guides ship inside the package, for an agent reading them offline.
+          import pathlib
+          docs = pathlib.Path(cotwatcher.__file__).parent / 'docs'
+          assert (docs / 'INTEGRATION.md').is_file() and (docs / 'REVIEW.md').is_file()
           print('wheel smoke test ok')
           "
       - uses: actions/upload-artifact@v4
