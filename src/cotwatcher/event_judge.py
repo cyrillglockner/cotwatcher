@@ -12,7 +12,7 @@ import json
 from typing import Any
 
 from .events import COMMITTING, STANCES, DecisionEvent, EventVerdict, sha
-from .judge import _strip_fences
+from .judge import JudgeUnavailable, _strip_fences
 from .rubric import Rubric
 
 SCHEMA_VERSION = "events-v2"
@@ -195,8 +195,11 @@ class EventJudge:
             kwargs["reasoning_effort"] = self.reasoning_effort
         try:
             reply = self.client.chat.completions.create(**kwargs)
-        except Exception as exc:                                  # noqa: BLE001
-            return EventVerdict(schema_version=SCHEMA_VERSION, error=f"judge call failed: {exc}")
+        except Exception as exc:                                  # noqa: BLE001 - transport of any kind
+            # Raised, not returned: the same rule `LLMJudge.score` follows, so
+            # an integration written against one judge behaves with the other.
+            raise JudgeUnavailable(f"judge at {getattr(self.client, 'base_url', '?')} "
+                                   f"could not be reached: {type(exc).__name__}: {exc}") from exc
         choice = reply.choices[0]
         finish = getattr(choice, "finish_reason", None)
         if finish in ("length", "content_filter"):

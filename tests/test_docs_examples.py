@@ -135,14 +135,19 @@ def test_help_falls_back_to_the_url_when_no_copy_is_installed(monkeypatch, tmp_p
     assert all(v.startswith(cli.DOCS_URL) for v in cli.guide_paths().values())
 
 
-def test_claude_md_and_agents_md_cannot_drift():
-    """One file under two names: agents that look for AGENTS.md and agents that
-    load CLAUDE.md must get the same instructions."""
+def test_claude_md_and_agents_md_do_not_drift():
+    """Agents that look for AGENTS.md and agents that load CLAUDE.md must get
+    the same instructions.
+
+    Two real files rather than a symlink: git stores a link as a blob holding
+    its target's name, so a checkout without symlink support writes CLAUDE.md
+    as a nine-byte file reading "AGENTS.md", and every rule in it is silently
+    gone. Drift is possible here, and caught on every push instead."""
     root = GUIDE.parents[1]
     claude, agents = root / "CLAUDE.md", root / "AGENTS.md"
-    assert agents.is_file()
-    assert claude.is_symlink() and claude.resolve() == agents.resolve()
-    assert claude.read_text(encoding="utf-8") == agents.read_text(encoding="utf-8")
+    assert not claude.is_symlink(), "a symlink reads as plain text where symlinks are unsupported"
+    assert claude.read_text(encoding="utf-8") == agents.read_text(encoding="utf-8"), (
+        "AGENTS.md and CLAUDE.md differ; copy one over the other")
 
 
 def test_the_sdist_has_no_dangling_symlink():

@@ -40,6 +40,7 @@ from dataclasses import replace
 
 from . import __version__, config
 from .events import verify as verify_events
+from .judge import JudgeUnavailable
 from .judge import SYSTEM_PROMPT, Score
 
 EXIT_CLEAN, EXIT_FLAGGED, EXIT_INCOMPLETE = 0, 1, 2
@@ -655,7 +656,14 @@ def cmd_propose(args) -> int:
                 # `that` refers to is visible. Prior turns are supplied as
                 # context the judge is told not to quote from.
                 prior = _prior_context(turns[:i])
-                verdict = judge.propose(turn["reasoning"], task=task, prior=prior)
+                try:
+                    verdict = judge.propose(turn["reasoning"], task=task, prior=prior)
+                except JudgeUnavailable as e:
+                    # Every remaining call fails the same way; forty identical
+                    # errors help nobody. Rows written so far are already
+                    # flushed and keep their value.
+                    raise InputError(f"{e}. {len(rows)} event(s) written before this "
+                                     f"point are in {args.out}") from e
                 # Located against this turn alone, so an event cannot be placed
                 # in a turn the judge was never shown.
                 verify_events(verdict, [turn])

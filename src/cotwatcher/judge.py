@@ -15,6 +15,24 @@ from typing import Any, Protocol
 from .rubric import Rubric
 
 
+class JudgeUnavailable(RuntimeError):
+    """The judge could not be reached, so nothing was assessed.
+
+    The rule both judges follow, so an integration written against one behaves
+    the same with the other:
+
+    - The environment failed and no reply exists — endpoint down, timeout,
+      authentication — raises this. An exception cannot be mistaken for a
+      verdict, and retrying the same input may succeed.
+    - A reply exists and is unusable, or the input is one we refuse to send —
+      unparseable JSON, no rationale, a prompt over the budget — comes back as
+      a result carrying `error`. Retrying will not help; the caller records the
+      chunk as unassessed and moves on.
+
+    Neither is ever a clean result.
+    """
+
+
 @dataclass(frozen=True)
 class Score:
     """Per-category scores in [0, 1] for one chunk of reasoning.
@@ -168,7 +186,11 @@ class LLMJudge:
         )
         if self.reasoning_effort:
             kwargs["reasoning_effort"] = self.reasoning_effort
-        resp = self.client.chat.completions.create(**kwargs)
+        try:
+            resp = self.client.chat.completions.create(**kwargs)
+        except Exception as exc:                       # noqa: BLE001 - transport of any kind
+            raise JudgeUnavailable(f"judge at {getattr(self.client, 'base_url', '?')} "
+                                   f"could not be reached: {type(exc).__name__}: {exc}") from exc
         choice = resp.choices[0]
         score = parse_score(choice.message.content or "", self.rubric)
         # A reply cut off at the token limit can still parse as complete JSON.

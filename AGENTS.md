@@ -1,8 +1,10 @@
 # AGENTS.md
 
-Instructions for any agent working **on** this repository. `CLAUDE.md` is a symlink to this
-file, so the two cannot drift. For an agent wiring cotwatcher **into** an application, the
-guide is `docs/INTEGRATION.md` instead.
+Instructions for any agent working **on** this repository. `AGENTS.md` and `CLAUDE.md` are
+byte-identical copies, kept that way by a test, because a symlink resolves to its own name
+as plain text on a checkout without symlink support and the instructions vanish silently.
+Edit either one; CI fails if they differ. For an agent wiring cotwatcher **into** an
+application, the guide is `docs/INTEGRATION.md` instead.
 
 cotwatcher reads a model's chain of thought and asks whether it decided to pursue behaviour a rubric
 describes. Reasons in `PLAN.md`, deferred work in `BACKLOG.md`, review ledger in `FINDINGS.md`.

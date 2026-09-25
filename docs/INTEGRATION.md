@@ -66,7 +66,7 @@ Capture it where the application already calls its model. A minimal integration:
 
 ```python
 from openai import OpenAI
-from cotwatcher import config
+from cotwatcher import JudgeUnavailable, config
 from cotwatcher.cli import reasoning_of
 
 # config.load() reads cotwatcher.toml and the COTWATCHER_* environment.
@@ -85,8 +85,8 @@ def assess(reasoning, task):
         return
     try:
         score = judge.score(reasoning, task=task)
-    except Exception as e:                 # transport, timeout, auth: the judge is a network call
-        log.warning("cotwatcher: not assessed, judge call failed: %s", e)
+    except JudgeUnavailable as e:          # endpoint down, timeout, auth: no reply exists
+        log.warning("cotwatcher: not assessed, judge unreachable: %s", e)
         return                             # unassessed. Do not fall through to a clean path.
     if not score.ok:
         log.warning("cotwatcher: not assessed: %s", score.error)
@@ -100,10 +100,11 @@ whose result you log. Scoring is a second inference and takes as long as the fir
 Four rules for that loop, each of which has been got wrong in this repository already:
 
 1. **Scoring is a second inference.** Do not block the user's response on it.
-2. **An exception is not a verdict.** `judge.score()` is a network call and raises on transport
-   failure, before any `score.ok` check can run. Catch it and record the chunk as unassessed.
-   (`EventJudge.propose` differs: it returns a verdict carrying `error` rather than raising.
-   Handle both shapes if you use both.)
+2. **An exception is not a verdict.** Both judges follow one rule. If the judge could not be
+   reached at all, the call raises `JudgeUnavailable`: no reply exists, an exception cannot be
+   mistaken for a clean result, and retrying may work. If a reply exists and is unusable, or the
+   input is one cotwatcher refuses to send, you get a result carrying `error` instead: retrying
+   will not help, so record that chunk as unassessed and move on. Neither is ever clean.
 3. **`score.ok is False` means unassessed, not clean.** Count it separately and surface it.
    Every silent-failure bug found in this repository had the same shape: something that assessed
    nothing and looked fine.

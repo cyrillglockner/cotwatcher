@@ -274,3 +274,61 @@ def test_the_prompt_demands_both_halves_of_a_commitment():
     assert "is not a commitment" in SYSTEM_PROMPT
     assert "Being wrong is not a commitment" in SYSTEM_PROMPT
     assert "Counter-example" in SYSTEM_PROMPT
+
+
+# --- both judges fail the same way -------------------------------------------
+
+class Unreachable:
+    class chat:
+        class completions:
+            @staticmethod
+            def create(**kw):
+                raise ConnectionError("connection refused")
+
+
+def test_an_unreachable_judge_raises_from_both_judges():
+    """They disagreed: one raised and the other returned a verdict with no
+    events, so an integration written against one either crashed or read a
+    failed call as a clean result."""
+    from cotwatcher.event_judge import EventJudge
+    from cotwatcher.judge import JudgeUnavailable, LLMJudge
+
+    r = Rubric.default()
+    with pytest.raises(JudgeUnavailable):
+        LLMJudge(Unreachable(), model="m", rubric=r).score("some reasoning")
+    with pytest.raises(JudgeUnavailable):
+        EventJudge(Unreachable(), model="m", rubric=r).propose("some reasoning")
+
+
+def test_an_unusable_reply_is_returned_by_both_judges_not_raised():
+    """A reply that exists and cannot be used is per-input: retrying will not
+    help, and the caller records that chunk as unassessed and continues."""
+    from cotwatcher.event_judge import EventJudge
+    from cotwatcher.judge import LLMJudge
+
+    class Garbage:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**kw):
+                    from types import SimpleNamespace
+                    return SimpleNamespace(choices=[SimpleNamespace(
+                        message=SimpleNamespace(content="not json at all"), finish_reason="stop")])
+
+    r = Rubric.default()
+    score = LLMJudge(Garbage(), model="m", rubric=r).score("some reasoning")
+    verdict = EventJudge(Garbage(), model="m", rubric=r).propose("some reasoning")
+    assert not score.ok and score.error
+    assert not verdict.ok and verdict.error
+
+
+def test_an_oversized_prompt_is_returned_by_both_judges_not_raised():
+    from cotwatcher.event_judge import EventJudge
+    from cotwatcher.judge import LLMJudge
+
+    r = Rubric.default()
+    huge = "x" * 40000
+    score = LLMJudge(Unreachable(), model="m", rubric=r, max_input_tokens=10).score(huge)
+    verdict = EventJudge(Unreachable(), model="m", rubric=r, max_input_tokens=10).propose(huge)
+    assert not score.ok and "budget" in (score.error or "") + (score.error or "")
+    assert not verdict.ok and "budget" in (verdict.error or "")
