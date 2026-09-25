@@ -433,14 +433,65 @@ def _read_episodes(path: Path, only: str | None) -> list[dict]:
             raise InputError(f"{path}:{n}: not valid JSON ({e.msg})")
         if not isinstance(rec, dict) or rec.get("record") == "manifest":
             continue
-        if not rec.get("turns"):
+        rec = _as_episode(rec, n)
+        if rec is None:
             continue
         if only and rec.get("id") != only:
             continue
         out.append(rec)
     if not out:
-        raise InputError(f"{path}: no episodes with turns" + (f" matching id {only!r}" if only else ""))
+        raise InputError(f"{path}: no episodes with reasoning turns"
+                         + (f" matching id {only!r}" if only else ""))
     return out
+
+
+def _as_episode(rec: dict, n: int) -> dict | None:
+    """Accept both shapes this tool writes.
+
+    `cotwatcher trace` writes one row per call with `reasoning` at the top
+    level; the agentic harness writes episodes with a `turns` list. The
+    documented capture-to-review path went through the first and `propose`
+    only read the second, so a normal trace was rejected.
+    """
+    if isinstance(rec.get("turns"), list):
+        return rec
+    if "reasoning" in rec or "capture_status" in rec:
+        turn = {"step": 0, "reasoning": rec.get("reasoning") or "",
+                "content": rec.get("answer") or "",
+                "finish_reason": rec.get("finish_reason")}
+        return {**{k: v for k, v in rec.items() if k not in ("reasoning", "answer")},
+                "id": str(rec.get("id", rec.get("task_id", f"trace#{n}"))),
+                "turns": [turn],
+                "capture_status": rec.get("capture_status")}
+    return None
+
+
+def _coverage_gaps(episode: dict) -> list[str]:
+    """What the judge will not be shown, named rather than skipped.
+
+    An episode whose turns carry no reasoning produced zero judge calls and
+    still exited clean. Truncated capture is the same problem: the reasoning
+    that mattered may be the part that was cut.
+    """
+    gaps = []
+    turns = episode.get("turns") or []
+    empty = [t for t in turns if not (t.get("reasoning") or "").strip()]
+    if not turns:
+        gaps.append("episode has no turns")
+    elif len(empty) == len(turns):
+        gaps.append(f"no turn carries reasoning ({len(turns)} turn(s)); nothing was assessed")
+    elif empty:
+        steps = ", ".join(str(t.get("step", "?")) for t in empty)
+        gaps.append(f"turn(s) {steps} carry no reasoning and were not assessed")
+    cut = [t for t in turns if t.get("finish_reason") in ("length", "content_filter")]
+    if cut:
+        steps = ", ".join(str(t.get("step", "?")) for t in cut)
+        gaps.append(f"turn(s) {steps} stopped on "
+                    f"{'/'.join(sorted({t['finish_reason'] for t in cut}))}; reasoning is incomplete")
+    status = episode.get("capture_status")
+    if status and status != "ok":
+        gaps.append(f"capture_status is {status}")
+    return gaps
 
 
 def _reasoning_turns(episode: dict) -> list[dict]:
@@ -489,8 +540,17 @@ def cmd_propose(args) -> int:
         for episode in episodes:
             turns = _reasoning_turns(episode)
             rows, summaries, errors, events = [], [], [], []
-            for turn in turns:
-                verdict = judge.propose(turn["reasoning"], task=str(episode.get("template", "")))
+            # Coverage first: turns the judge will never see are recorded as
+            # gaps, so an episode with nothing to read cannot come back clean.
+            for gap in _coverage_gaps(episode):
+                errors.append(gap)
+            task = _task_text(episode)
+            for i, turn in enumerate(turns):
+                # "Actually, I won't do that" is only a withdrawal if what
+                # `that` refers to is visible. Prior turns are supplied as
+                # context the judge is told not to quote from.
+                prior = _prior_context(turns[:i])
+                verdict = judge.propose(turn["reasoning"], task=task, prior=prior)
                 # Located against this turn alone, so an event cannot be placed
                 # in a turn the judge was never shown.
                 verify_events(verdict, [turn])
@@ -514,6 +574,39 @@ def cmd_propose(args) -> int:
                   f"{located} located, {len(episode_failures)} failure(s)")
         print(f"\nwrote {args.out}. Runs against reviewed episodes are development evaluations.")
     return EXIT_INCOMPLETE if failures else EXIT_CLEAN
+
+
+PRIOR_CHARS = 3000
+
+
+def _task_text(episode: dict) -> str:
+    """The task itself where the capture kept it, its name otherwise. A name
+    alone tells the judge nothing about what the model was asked to do."""
+    for key in ("task", "prompt", "instructions"):
+        value = episode.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    spec = episode.get("spec") or (episode.get("provenance") or {}).get("task")
+    if isinstance(spec, str) and spec.strip():
+        return spec
+    return str(episode.get("template", ""))
+
+
+def _prior_context(earlier: list[dict]) -> str:
+    """The tail of the preceding reasoning, newest last, bounded so context
+    never crowds out the turn being judged."""
+    parts = []
+    budget = PRIOR_CHARS
+    for turn in reversed(earlier):
+        text = (turn.get("reasoning") or "").strip()
+        if not text:
+            continue
+        take = text[-budget:] if len(text) > budget else text
+        parts.append(f"[turn {turn.get('step', '?')}, last {len(take)} chars]\n{take}")
+        budget -= len(take)
+        if budget <= 0:
+            break
+    return "\n\n".join(reversed(parts))
 
 
 def _event_row(event) -> dict:
@@ -558,7 +651,18 @@ def cmd_review(args) -> int:
     for episode, verdict in verdicts:
         verify_fn(verdict, episode.get("turns", []))
 
-    report_id = _sha(json.dumps([v.summary for _, v in verdicts]) + str(args.file))
+    # Identity must cover everything a verdict was made about. Hashing the
+    # summaries and the filename let a changed event keep the same report id,
+    # so a confirmation recorded against a commitment could silently reappear
+    # against the withdrawal that replaced it.
+    report_id = _sha(json.dumps({
+        "episodes": _sha(Path(args.file).read_text(encoding="utf-8", errors="replace")),
+        "proposals": _sha(Path(args.proposals).read_text(encoding="utf-8", errors="replace")),
+        "episode_ids": sorted(str(e.get("id", "")) for e, _ in verdicts),
+        "judge": sorted({json.dumps(v.judge, sort_keys=True) for _, v in verdicts}),
+        "events": sorted(e.event_id(str(ep.get("id", "")))
+                         for ep, v in verdicts for e in v.events),
+    }, sort_keys=True))
     html = render(verdicts, report_id=report_id, source_file=str(args.file))
     try:
         Path(args.out).write_text(html, encoding="utf-8")

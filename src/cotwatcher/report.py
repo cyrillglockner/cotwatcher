@@ -38,6 +38,10 @@ h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:32px 0 8px; }
       border-radius:8px; padding:14px 16px; margin:12px 0; }
 .ev.alert { border-left-color:var(--alert); }
 .ev.unassessed { border-left-color:var(--fail); }
+.ev.suggested { border-left-color:var(--fail); border-left-style:dashed; }
+.warn { color:var(--fail); font-size:13px; margin:6px 0; }
+.pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+@media (max-width:620px) { .pair { grid-template-columns:1fr; } }
 .tag { font:600 11px/1 ui-monospace,monospace; letter-spacing:.04em; text-transform:uppercase;
        color:var(--dim); margin-right:10px; }
 .tag.stance { color:var(--fg); }
@@ -144,7 +148,10 @@ def _esc(text: str) -> str:
 
 
 def _event_card(ev_id: str, event, turns: list[dict]) -> str:
-    classes = "ev" + (" alert" if event.alerts else "") + ("" if event.located else " unassessed")
+    suggestion = event.located and not event.verified
+    classes = ("ev" + (" alert" if event.alerts else "")
+               + ("" if event.located else " unassessed")
+               + (" suggested" if suggestion else ""))
     head = (f'<span class="tag">{_esc(event.category)}</span>'
             f'<span class="tag stance">{_esc(event.stance)}</span>')
     if not event.located:
@@ -154,8 +161,20 @@ def _event_card(ev_id: str, event, turns: list[dict]) -> str:
                 f'<pre class="ctx">{_esc(event.quote[:400])}</pre></div>')
     before, quote, after = context(turns, event.location)
     loc = event.location
+    banner = ""
+    if suggestion:
+        # A resemblance is not evidence. A quote measured at 0.947 similarity
+        # had dropped a "not" out of the source sentence, reversing what it
+        # said, so the two texts go side by side and the reviewer decides.
+        banner = ('<p class="warn">Resemblance only, not a verified quote. Read what the judge '
+                  'wrote against what the source says before deciding.</p>'
+                  f'<div class="pair"><div><span class="tag">judge wrote</span>'
+                  f'<pre class="ctx">{_esc(event.quote)}</pre></div>'
+                  f'<div><span class="tag">source says</span>'
+                  f'<pre class="ctx">{_esc(loc.source_text(turns))}</pre></div></div>')
     return (f'<div class="{classes}" data-ev="{_esc(ev_id)}">{head}'
             f'<p class="why">{_esc(event.rationale)}</p>'
+            f'{banner}'
             f'<pre class="ctx">{_esc(before)}<mark>{_esc(quote)}</mark>{_esc(after)}</pre>'
             f'<p class="loc">turn {loc.turn}, chars {loc.start}–{loc.end}, '
             f'{loc.match} match, similarity {loc.similarity}, source {loc.source_sha}</p>'
@@ -172,7 +191,7 @@ def render(episodes: list[tuple[dict, EventVerdict]], report_id: str,
     """One page for a list of (episode, verified verdict) pairs."""
     cards: list[str] = []
     event_count = 0
-    located = alerts = unassessed = 0
+    located = alerts = unassessed = suggestions = 0
     turns_total = turns_with_reasoning = 0
 
     for episode, verdict in episodes:
@@ -189,12 +208,15 @@ def render(episodes: list[tuple[dict, EventVerdict]], report_id: str,
         ordered = verdict.timeline() + [e for e in verdict.events if not e.located]
         if not ordered:
             cards.append('<p class="none">No decision events proposed.</p>')
-        for i, event in enumerate(ordered):
+        for event in ordered:
             event_count += 1
             located += 1 if event.located else 0
             alerts += 1 if event.alerts else 0
+            suggestions += 1 if (event.located and not event.verified) else 0
             unassessed += 0 if event.located else 1
-            cards.append(_event_card(f'{episode.get("id", "e")}#{i}', event, turns))
+            # Identity from content: a verdict recorded about this event must not
+            # transfer to whatever lands at the same index in a later run.
+            cards.append(_event_card(event.event_id(str(episode.get("id", ""))), event, turns))
 
     payload = {"report_id": report_id, "event_count": event_count,
                "source_file": source_file,
@@ -202,7 +224,8 @@ def render(episodes: list[tuple[dict, EventVerdict]], report_id: str,
     counts = (f'<div class="counts">'
               f'<span><b>{len(episodes)}</b> episodes</span>'
               f'<span><b>{event_count}</b> events proposed</span>'
-              f'<span><b>{alerts}</b> located commitments</span>'
+              f'<span><b>{alerts}</b> verified commitments</span>'
+              f'<span class="fail"><b>{suggestions}</b> resemblance only</span>'
               f'<span><b>{located}</b> located</span>'
               f'<span class="fail"><b>{unassessed}</b> unassessed</span>'
               f'<span><b>{turns_with_reasoning}</b>/{turns_total} turns carry reasoning</span>'

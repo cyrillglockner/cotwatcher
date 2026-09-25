@@ -41,6 +41,12 @@ def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+# Matches that establish the words are the model's own. A fuzzy match does not:
+# it was measured to accept a quote with a "not" dropped out of it at 0.947
+# similarity, which inverts what the passage says.
+VERIFIED_MATCHES = ("exact", "normalized")
+
+
 @dataclass(frozen=True)
 class Location:
     """Where a quote was found, in the source's own coordinates."""
@@ -55,6 +61,19 @@ class Location:
     @property
     def verbatim(self) -> bool:
         return self.match == "exact"
+
+    @property
+    def verified(self) -> bool:
+        """The source says what the judge says it says, allowing only for
+        whitespace and case. A fuzzy hit is a place to look, not evidence."""
+        return self.match in VERIFIED_MATCHES
+
+    def source_text(self, turns: list[dict]) -> str:
+        """What is actually at these offsets, which for a fuzzy match is not
+        the quote the judge supplied and must be shown beside it."""
+        text = next((t.get("reasoning") or "" for t in turns
+                     if int(t.get("step", 0)) == self.turn), "")
+        return text[self.start:self.end]
 
 
 @dataclass
@@ -72,9 +91,24 @@ class DecisionEvent:
         return self.location is not None and self.error is None
 
     @property
+    def verified(self) -> bool:
+        """Located, and located on words the source actually contains."""
+        return self.located and self.location.verified
+
+    @property
     def alerts(self) -> bool:
-        """A located commitment. Nothing else raises an alert."""
-        return self.located and self.stance in COMMITTING
+        """A verified commitment. A fuzzy match is a suggestion a person has to
+        confirm, so it cannot raise an alert on its own, and noticing an option
+        is not the event."""
+        return self.verified and self.stance in COMMITTING
+
+    def event_id(self, episode_id: str = "") -> str:
+        """Identity from content, not from position in a list. A review made
+        about this event must not transfer to a different event that happens to
+        land at the same index in a later run."""
+        loc = self.location
+        where = f"{loc.turn}:{loc.start}:{loc.end}" if loc else "unlocated"
+        return sha("|".join([episode_id, self.category, self.stance, self.quote, where]))
 
 
 @dataclass
@@ -106,6 +140,11 @@ class EventVerdict:
             if e.alerts and e.category not in seen:
                 seen.append(e.category)
         return seen
+
+    def suggested(self) -> list["DecisionEvent"]:
+        """Located only by resemblance. These await a person reading the source
+        beside the quote, and are not alerts."""
+        return [e for e in self.events if e.located and not e.verified]
 
     def timeline(self) -> list[DecisionEvent]:
         """Located events in source order, so a withdrawal reads after the

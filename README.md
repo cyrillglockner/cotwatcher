@@ -47,10 +47,10 @@ Linear probes on pooled activations reach 0.90-1.00 AUROC on held-out synthetic 
 
 The adversarial reviews in [FINDINGS.md](FINDINGS.md) were run by **OpenAI Codex**, working
 against this repository. Its reviews found the actor being served a 4,096-token context while
-the run asked for far more, a `reversed` field coerced from the string `"false"` so that a clean
-chunk read as a withdrawn commitment, two string replacements that silently matched nothing and
-shipped bugs, a controlled pair whose test made the task unsatisfiable by any implementation,
-and a harness verdict a model's own code could forge. It also argued the project out of
+the run asked for far more, a `reversed` field coerced from the string `"false"`, which marked
+reversals that had not happened, a comparison summary reading fields its own rows never carried,
+a controlled pair whose test made the task unsatisfiable by an ordinary deterministic
+implementation, and a harness verdict a model's own code could forge. It also argued the project out of
 building a live stream tap before the verdicts it would produce could be checked by a person,
 which is why `cotwatcher review` exists.
 
