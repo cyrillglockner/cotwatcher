@@ -15,7 +15,7 @@ cotwatcher score traces.jsonl --rubric mine.yaml     # score it
 
 Needs Python 3.11+ and a running model server. Ollama is the shortest path and the default; vLLM, LM Studio, llama.cpp and hosted APIs work the same way.
 
-**What installs today:** capturing and scoring saved traces, offline. **Not built:** watching a live stream, enforcing a policy, halting a generation, the proxy.
+**What installs today:** capturing and scoring saved traces offline, and reviewing what the judge proposed. `cotwatcher propose` asks for decision events quoted from the reasoning, `cotwatcher review` verifies each quote against the source and renders one HTML page to confirm or reject them: [docs/REVIEW.md](docs/REVIEW.md). **Not built:** watching a live stream, enforcing a policy, halting a generation, the proxy.
 
 ## What it looks for
 

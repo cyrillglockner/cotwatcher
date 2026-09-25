@@ -39,6 +39,7 @@ from pathlib import Path
 from dataclasses import replace
 
 from . import __version__, config
+from .events import verify as verify_events
 from .judge import SYSTEM_PROMPT, Score
 
 EXIT_CLEAN, EXIT_FLAGGED, EXIT_INCOMPLETE = 0, 1, 2
@@ -416,6 +417,159 @@ def cmd_score(args) -> int:
     return EXIT_FLAGGED if flagged else EXIT_CLEAN
 
 
+def _read_episodes(path: Path, only: str | None) -> list[dict]:
+    """Episode records from a harness .jsonl, manifest rows skipped."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as e:
+        raise InputError(f"cannot read {path}: {e.strerror or e}")
+    out = []
+    for n, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise InputError(f"{path}:{n}: not valid JSON ({e.msg})")
+        if not isinstance(rec, dict) or rec.get("record") == "manifest":
+            continue
+        if not rec.get("turns"):
+            continue
+        if only and rec.get("id") != only:
+            continue
+        out.append(rec)
+    if not out:
+        raise InputError(f"{path}: no episodes with turns" + (f" matching id {only!r}" if only else ""))
+    return out
+
+
+def _reasoning_of(episode: dict) -> str:
+    parts = []
+    for turn in episode.get("turns", []):
+        text = (turn.get("reasoning") or "").strip()
+        if text:
+            parts.append(f"[turn {turn.get('step', '?')}]\n{text}")
+    return "\n\n".join(parts)
+
+
+def cmd_propose(args) -> int:
+    """Ask the judge for located decision events and write them to a file."""
+    from .event_judge import SCHEMA_VERSION, EventJudge
+
+    settings = settings_for(args)
+    episodes = _read_episodes(Path(args.file), args.id)
+    rubric = load_rubric(settings)
+    judge = EventJudge(settings.judge.client(), settings.judge.model, rubric=rubric,
+                       reasoning_effort=settings.judge_reasoning_effort,
+                       max_input_tokens=settings.judge_max_input_tokens)
+    try:
+        out = open(args.out, "w", encoding="utf-8")
+    except OSError as e:
+        raise InputError(f"cannot write {args.out}: {e.strerror or e}")
+    with out:
+        out.write(json.dumps({"record": "manifest", "proposed_at": _now(),
+                              "schema_version": SCHEMA_VERSION,
+                              "judge_model": settings.judge.model, "judge_url": settings.judge.url,
+                              "judge_reasoning_effort": settings.judge_reasoning_effort,
+                              "prompt_sha": judge.prompt_sha,
+                              "rubric_sha": _sha(rubric.to_prompt()),
+                              "rubric_categories": list(rubric.names),
+                              "episodes_file": str(args.file),
+                              "episodes_sha": _sha(Path(args.file).read_text(encoding="utf-8", errors="replace")),
+                              "development_run": True,
+                              "cotwatcher_version": __version__}) + "\n")
+        out.flush()
+        failures = 0
+        for episode in episodes:
+            verdict = judge.propose(_reasoning_of(episode), task=str(episode.get("template", "")))
+            verify_events(verdict, episode.get("turns", []))
+            failures += len(verdict.failures)
+            out.write(json.dumps({"id": episode.get("id"), "run": episode.get("run"),
+                                  "summary": verdict.summary,
+                                  "schema_version": verdict.schema_version,
+                                  "judge": verdict.judge, "error": verdict.error,
+                                  "events": [_event_row(e) for e in verdict.events]}) + "\n")
+            out.flush()
+            located = sum(1 for e in verdict.events if e.located)
+            print(f"{episode.get('id')}: {len(verdict.events)} event(s), {located} located, "
+                  f"{len(verdict.failures)} failure(s)")
+        print(f"\nwrote {args.out}. Runs against reviewed episodes are development evaluations.")
+    return EXIT_INCOMPLETE if failures else EXIT_CLEAN
+
+
+def _event_row(event) -> dict:
+    loc = event.location
+    return {"category": event.category, "stance": event.stance, "quote": event.quote,
+            "rationale": event.rationale, "turn": event.turn, "error": event.error,
+            "location": None if loc is None else
+                        {"turn": loc.turn, "start": loc.start, "end": loc.end,
+                         "match": loc.match, "similarity": loc.similarity,
+                         "source_sha": loc.source_sha}}
+
+
+def cmd_review(args) -> int:
+    """Render proposed events as one HTML page for review."""
+    from .events import DecisionEvent, EventVerdict, Location
+    from .events import verify as verify_fn
+    from .report import render
+
+    episodes = {e.get("id"): e for e in _read_episodes(Path(args.file), args.id)}
+    verdicts: list[tuple[dict, EventVerdict]] = []
+    if args.proposals:
+        for row in _read_rows(Path(args.proposals)):
+            if row.get("id") not in episodes:
+                continue
+            events = []
+            for r in row.get("events", []):
+                loc = r.get("location")
+                events.append(DecisionEvent(
+                    category=r.get("category", "?"), stance=r.get("stance", "?"),
+                    quote=r.get("quote", ""), rationale=r.get("rationale", ""),
+                    turn=r.get("turn"), error=r.get("error"),
+                    location=None if not loc else Location(**loc)))
+            verdicts.append((episodes[row["id"]],
+                             EventVerdict(events=events, summary=row.get("summary", ""),
+                                          schema_version=row.get("schema_version", ""),
+                                          judge=row.get("judge") or {}, error=row.get("error"))))
+        if not verdicts:
+            raise InputError(f"{args.proposals}: no proposals match the episodes in {args.file}")
+    else:
+        raise InputError("pass --proposals FILE (write one with `cotwatcher propose`)")
+
+    for episode, verdict in verdicts:
+        verify_fn(verdict, episode.get("turns", []))
+
+    report_id = _sha(json.dumps([v.summary for _, v in verdicts]) + str(args.file))
+    html = render(verdicts, report_id=report_id, source_file=str(args.file))
+    try:
+        Path(args.out).write_text(html, encoding="utf-8")
+    except OSError as e:
+        raise InputError(f"cannot write {args.out}: {e.strerror or e}")
+    events = sum(len(v.events) for _, v in verdicts)
+    failures = sum(len(v.failures) for _, v in verdicts)
+    print(f"{len(verdicts)} episode(s), {events} event(s), {failures} assessment failure(s)")
+    print(f"wrote {args.out} \u2014 open it, review, then Export reviews to keep your decisions")
+    return EXIT_INCOMPLETE if failures else EXIT_CLEAN
+
+
+def _read_rows(path: Path) -> list[dict]:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as e:
+        raise InputError(f"cannot read {path}: {e.strerror or e}")
+    rows = []
+    for n, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise InputError(f"{path}:{n}: not valid JSON ({e.msg})")
+        if isinstance(rec, dict) and rec.get("record") != "manifest":
+            rows.append(rec)
+    return rows
+
+
 def main(argv: list[str] | None = None) -> int:
     # These are accepted both before and after the subcommand, because the
     # documented form is `cotwatcher score FILE --rubric mine.yaml` and argparse
@@ -444,6 +598,21 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("-o", "--out", help="write per-chunk results as JSON Lines")
     sc.add_argument("-t", "--threshold", type=float, default=0.5)
     sc.set_defaults(fn=cmd_score)
+
+    pr = sub.add_parser("propose", parents=[common],
+                        help="ask the judge for located decision events in captured episodes")
+    pr.add_argument("file", help="episodes .jsonl with a turns list carrying reasoning")
+    pr.add_argument("-o", "--out", default="proposals.jsonl")
+    pr.add_argument("--id", help="only this episode id")
+    pr.set_defaults(fn=cmd_propose)
+
+    rv = sub.add_parser("review", parents=[common],
+                        help="render proposed events as one HTML page for review")
+    rv.add_argument("file", help="the same episodes .jsonl")
+    rv.add_argument("-p", "--proposals", help="proposals written by `cotwatcher propose`")
+    rv.add_argument("-o", "--out", default="review.html")
+    rv.add_argument("--id", help="only this episode id")
+    rv.set_defaults(fn=cmd_review)
 
     # argparse writes the parent default (None) over a value given before the
     # subcommand, so re-parse just those two from the raw arguments.
