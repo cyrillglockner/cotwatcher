@@ -48,8 +48,14 @@ a change to what a verdict carries, tested behaviourally.
 
 Published transcripts from other work are held as a separate challenge set rather than
 merged into the pilot labels. Four of seven substantive reasoning blocks state that the
-model believes it is being evaluated. Negatives from that source carry no information,
-because compliance may be a response to a recognised test. Positives still count.
+model believes it is being evaluated. Awareness is recorded per block and reported
+separately: such a block cannot establish what a model does unobserved, but it is still a
+valid negative for judge specificity, which asks only whether the observed text contains a
+decision. Five blocks are labelled, one positive and four negatives, three of them
+awareness-marked. The two uses are never pooled in one rate.
+
+Selection bias in this source is severe, because the published blocks are the ones used in
+paper figures and 31 of 38 are elided. Recall on them is meaningful; precision is not.
 
 ## Next
 

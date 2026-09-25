@@ -29,9 +29,11 @@ hallucination, not deception.
   system prompt. It bit the judge, then the actor. Use `qwen3:8b-32k` and `gpt-oss:20b-64k`
   (Modelfiles in `ollama/`). `cotwatcher check` warns when no input limit is set.
 - **Probe features are a replay** over saved text, not the original hidden states.
-- **Evaluation-aware traces cannot supply negatives.** A model that says it is in an anti-scheming
-  evaluation may be complying with a test it recognised, so a clean trace proves nothing. Positives
-  still count, and count for more. Check for awareness markers before labelling anything 0.
+- **Evaluation awareness is metadata, recorded and reported separately.** A model that says it is in
+  an anti-scheming evaluation may be complying with a test it recognised, so such a trace cannot
+  establish what it does unobserved. It remains a valid negative for judge specificity, which asks
+  only whether the observed text contains a commitment. Keeping the positives from a source while
+  discarding its negatives selects evidence in one direction. Never pool the two uses in one rate.
 
 Keep testable implementation rules in tests rather than repeating them here.
 
