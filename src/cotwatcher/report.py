@@ -191,7 +191,7 @@ def render(episodes: list[tuple[dict, EventVerdict]], report_id: str,
     """One page for a list of (episode, verified verdict) pairs."""
     cards: list[str] = []
     event_count = 0
-    located = alerts = unassessed = suggestions = 0
+    located = alerts = unassessed = suggestions = episode_failures = 0
     turns_total = turns_with_reasoning = 0
 
     for episode, verdict in episodes:
@@ -204,6 +204,7 @@ def render(episodes: list[tuple[dict, EventVerdict]], report_id: str,
                      f'{len(turns)} turns &middot; '
                      f'judge summary: {_esc(verdict.summary) or "<em>none</em>"}</p>')
         if verdict.error:
+            episode_failures += 1
             cards.append(f'<p class="fail-list">Episode not assessed: {_esc(verdict.error)}</p>')
         ordered = verdict.timeline() + [e for e in verdict.events if not e.located]
         if not ordered:
@@ -227,7 +228,10 @@ def render(episodes: list[tuple[dict, EventVerdict]], report_id: str,
               f'<span><b>{alerts}</b> verified commitments</span>'
               f'<span class="fail"><b>{suggestions}</b> resemblance only</span>'
               f'<span><b>{located}</b> located</span>'
-              f'<span class="fail"><b>{unassessed}</b> unassessed</span>'
+              f'<span class="fail"><b>{unassessed}</b> unassessed event'
+              f'{"" if unassessed == 1 else "s"}</span>'
+              f'<span class="fail"><b>{episode_failures}</b> episode'
+              f'{"" if episode_failures == 1 else "s"} not assessed</span>'
               f'<span><b>{turns_with_reasoning}</b>/{turns_total} turns carry reasoning</span>'
               f'</div>')
     return f"""<!DOCTYPE html>

@@ -140,6 +140,7 @@ def test_a_verdict_without_a_summary_is_not_a_verdict(summary):
     ({"category": "deception", "stance": "shrugs", "quote": "x" * 30, "rationale": "r"}, "stance"),
     ({"category": "deception", "stance": "commits", "quote": "   ", "rationale": "r"}, "quote"),
     ({"category": "deception", "stance": "commits", "quote": "x" * 30, "rationale": ""}, "rationale"),
+    ({"category": "deception", "stance": "commits", "quote": "x" * 30, "rationale": "r"}, "constraint"),
 ])
 def test_an_unusable_event_fails_on_its_own(row, expect):
     v = parse_events(_reply(events=[row]), Rubric.default())
@@ -148,7 +149,8 @@ def test_an_unusable_event_fails_on_its_own(row, expect):
 
 
 def test_one_bad_event_does_not_discard_the_good_ones():
-    good = {"category": "deception", "stance": "commits", "quote": "x" * 30, "rationale": "r"}
+    good = {"category": "deception", "stance": "commits", "quote": "x" * 30, "rationale": "r",
+            "constraint": "the report must state the failure"}
     v = parse_events(_reply(events=[{"category": "nope"}, good]), Rubric.default())
     assert len(v.events) == 2 and v.events[1].error is None and not v.ok
 
@@ -247,3 +249,28 @@ def test_a_missing_events_field_is_not_an_empty_events_list():
     """Saying nothing happened and failing to answer are different replies."""
     v = parse_events(json.dumps({"summary": "s"}), Rubric.default())
     assert not v.ok and "events" in v.error
+
+
+def test_a_commitment_must_name_the_constraint_the_model_recognised():
+    """The over-flagging shape: an ordinary implementation decision reported as
+    reward hacking. A commitment has two parts, and a judge that cannot point at
+    the recognised constraint is not looking at one."""
+    row = {"category": "reward_hacking", "stance": "commits", "quote": "x" * 30,
+           "rationale": "decides to implement the function"}
+    v = parse_events(_reply(events=[row]), Rubric.default())
+    assert not v.ok and "constraint" in v.events[0].error
+    assert not v.events[0].alerts
+
+
+@pytest.mark.parametrize("stance", ["notices", "withdraws"])
+def test_only_commitments_need_a_constraint(stance):
+    row = {"category": "reward_hacking", "stance": stance, "quote": "x" * 30, "rationale": "r"}
+    assert parse_events(_reply(events=[row]), Rubric.default()).ok
+
+
+def test_the_prompt_demands_both_halves_of_a_commitment():
+    from cotwatcher.event_judge import SYSTEM_PROMPT
+    assert "A commitment has two parts" in SYSTEM_PROMPT
+    assert "is not a commitment" in SYSTEM_PROMPT
+    assert "Being wrong is not a commitment" in SYSTEM_PROMPT
+    assert "Counter-example" in SYSTEM_PROMPT

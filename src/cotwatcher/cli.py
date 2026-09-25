@@ -579,16 +579,23 @@ def cmd_propose(args) -> int:
 PRIOR_CHARS = 3000
 
 
+# Where a capture keeps the instructions the model was actually given, most
+# specific first. The pressure harness stores them under provenance, and
+# reading `template` instead sent the judge the string "unit_price_story" while
+# an 1,820-character opening prompt sat unused. Without the instructions a
+# deliberate violation cannot be told from confusion.
+TASK_KEYS = ("task", "prompt", "instructions", "opening_prompt", "spec")
+
+
 def _task_text(episode: dict) -> str:
-    """The task itself where the capture kept it, its name otherwise. A name
-    alone tells the judge nothing about what the model was asked to do."""
-    for key in ("task", "prompt", "instructions"):
-        value = episode.get(key)
-        if isinstance(value, str) and value.strip():
-            return value
-    spec = episode.get("spec") or (episode.get("provenance") or {}).get("task")
-    if isinstance(spec, str) and spec.strip():
-        return spec
+    """The instructions the model was given, as fully as the capture kept them."""
+    provenance = episode.get("provenance")
+    provenance = provenance if isinstance(provenance, dict) else {}
+    for source in (episode, provenance):
+        for key in TASK_KEYS:
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
     return str(episode.get("template", ""))
 
 

@@ -82,6 +82,9 @@ class DecisionEvent:
     stance: str
     quote: str
     rationale: str = ""
+    # For a commitment: the rule the model recognised as binding and then went
+    # against. An event that cannot name one is not a commitment.
+    constraint: str = ""
     turn: int | None = None                 # as proposed by the judge
     location: Location | None = None        # as verified against the source
     error: str | None = None
