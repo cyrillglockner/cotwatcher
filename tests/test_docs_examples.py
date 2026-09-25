@@ -105,3 +105,16 @@ def test_the_guides_are_packaged_with_the_wheel():
     for source in ("docs/INTEGRATION.md", "docs/REVIEW.md"):
         assert source in included, f"{source} would not ship in the wheel"
         assert (root / source).is_file()
+
+
+def test_the_readme_does_not_imply_probes_are_installed():
+    """`0.1.0a2` shipped with the probe AUROC numbers under Status. Nothing in
+    the package reads activations, and the numbers are a replay over saved
+    text, so the paragraph has to say both."""
+    readme = (GUIDE.parents[1] / "README.md").read_text(encoding="utf-8")
+    paragraph = next(p for p in readme.split("\n\n") if p.startswith("Linear probes"))
+    assert "not in the installed package" in paragraph
+    import cotwatcher
+    package = pathlib.Path(cotwatcher.__file__).parent
+    names = {p.stem for p in package.rglob("*.py")}
+    assert not {"probe", "probes", "activations", "probe_judge"} & names
