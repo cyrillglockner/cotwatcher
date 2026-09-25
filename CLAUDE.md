@@ -2,6 +2,8 @@
 
 cotwatcher reads a model's chain of thought and asks whether it decided to pursue behaviour a rubric
 describes. Reasons in `PLAN.md`, deferred work in `BACKLOG.md`, review ledger in `FINDINGS.md`.
+`STATUS.md` is the external summary: update it, and its date, whenever an evaluation result or a
+known defect changes.
 Setup `uv pip install -e ".[dev]"` (add `[evals]`); tests `.venv/bin/pytest`.
 
 ## Scope — check before designing anything
