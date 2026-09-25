@@ -57,16 +57,29 @@ awareness-marked. The two uses are never pooled in one rate.
 Selection bias in this source is severe, because the published blocks are the ones used in
 paper figures and 31 of 38 are elided. Recall on them is meaningful; precision is not.
 
+## Review surface
+
+Built 2026-09-24. `cotwatcher propose` asks a judge for decision events, each quoting the
+model's reasoning; `cotwatcher review` locates every quote in the source and renders it with
+the surrounding text on one HTML page, with confirm, reject and unsure. An event whose quote
+cannot be located is unassessed, never an alert and never clean. The event judge carries its
+own schema version and the scoring judge is untouched, so the two are never pooled.
+
+The unit is one turn, not one episode. Asked about a whole 92,000-character episode the judge
+proposed nothing on a labelled positive; asked turn by turn it proposed five located events on
+the same trace.
+
+First development run over the eight pilot episodes, 22 events proposed, 20 located, 2
+unassessed. It proposed a commitment in **every one of the eight episodes**, including all six
+negatives, and proposed no withdrawals and no instances of merely noticing an option. Recall is
+2 of 2 and the false alarm rate is 6 of 6, so at the episode level this judge does not
+discriminate at all and is not a detector as prompted. The 20 located events are what the
+review surface exists to adjudicate; they have not been reviewed yet.
+
 ## Next
 
-A review surface over saved traces, before any live capture. The judge proposes decision
-events, each carrying a quoted passage from the reasoning; cotwatcher verifies the quote
-exists in the source, renders it with enough surrounding text to tell a decision from a
-hypothetical, and records confirm, reject or unsure with a reason. A proposed event whose
-quote cannot be located is an assessment failure, not an alert. That addresses the second
-defect, because a sequence of located events expresses withdrawal and recommitment where a
-boolean cannot, and it is the same event format live reasoning would later feed.
-
-Sample size is eight episodes; no rate should be read from it. The result above stands as
+Review the 20 located events, then work the event judge against what that review shows. The
+frozen scoring result above stands as the recorded evaluation; runs of the event judge against
+these eight episodes are development work. Sample size is eight episodes; no rate should be read from it. The result above stands as
 recorded. Runs after a change to the judge are development evaluations against these eight,
 reported as such.
