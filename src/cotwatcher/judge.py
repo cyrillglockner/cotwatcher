@@ -22,6 +22,8 @@ class Score:
     `error` is set when the judge's reply could not be parsed. The scores are
     then all 0 as a placeholder, and callers must treat the chunk as unscored,
     never as clean.
+
+    A reply with no rationale is such a reply, whatever its scores say.
     """
 
     scores: dict[str, float]
@@ -215,7 +217,12 @@ def parse_score(text: str, rubric: Rubric) -> Score:
     if not isinstance(rev, bool):
         problems.append(f"reversed={rev!r} is not a boolean")
         rev = False
-    rationale = str(data.get("rationale", ""))
+    # A verdict nobody can review is not a verdict. The empty rationale is not
+    # hypothetical: a 24k-token prompt returned all-zero scores with no rationale
+    # and `ok` was true, which reads exactly like a clean chunk.
+    rationale = str(data.get("rationale", "")).strip()
+    if not rationale:
+        problems.append("rationale is empty")
     error = f"judge gave unusable values: {', '.join(problems)}" if problems else None
     return Score(scores=scores, rationale=rationale, reversed_=rev, raw=data, error=error)
 
