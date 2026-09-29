@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-09-25.
+Last updated 2026-09-29.
 
 cotwatcher reads a model's chain of thought and decides whether the model committed to
 pursuing behaviour a rubric prohibits. It does not assess the model's output.
@@ -110,6 +110,11 @@ The agent-written-glue MVP is documented in `docs/INTEGRATION.md`. Codex reviewe
 `859ab3a` and recorded INT1–INT4 in `FINDINGS.md`: the example input budget is ignored
 at its documented TOML location, the Python example bypasses configuration loading,
 the sample needs a judge transport-error boundary and clear background scheduling
-placement, and one check test can now call a real watched endpoint. These remain
-open pending verification of fixes. The review ran 195 tests successfully and
-excluded that endpoint-contacting test. No new detection measurement was made.
+placement, and one check test can now call a real watched endpoint. INT5 was found while
+fixing INT3: the two judges failed in two different ways, one raising when the endpoint was
+unreachable and the other returning a result carrying an error, so an integration written
+against one either crashed or read a failed call as a verdict with no events. All five are
+fixed, each verified by a named test, and both judges now follow one failure rule: unreachable
+raises, an unusable reply comes back carrying an error, neither is ever clean. The review ran
+195 tests successfully and excluded that endpoint-contacting test. No new detection measurement
+was made.

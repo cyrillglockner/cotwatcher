@@ -1,11 +1,15 @@
 # Backlog
 
-## Next release: beta, Monday 2026-09-28
+## Releases
 
-Cut `0.1.0b1` from whatever has landed by then. Already waiting on it: the README correction
-saying probes are not in the installed package, `AGENTS.md`, and the guide paths in
-`cotwatcher --help`. The README is the PyPI page, so a correction to it reaches users only
-through a release.
+`0.1.0a3` was cut on 2026-09-29, a day after the planned date, carrying the README correction
+saying probes are not in the installed package, `AGENTS.md`, the guide paths in
+`cotwatcher --help`, and one failure rule across both judges. The README is the PyPI page, so a
+correction to it reaches users only through a release.
+
+Still alpha rather than the planned `0.1.0b1`: the event judge flags four of six labelled
+negatives, and EV10 may change what a commitment is required to carry. Beta waits on EV10 and
+EV2.
 
 Release steps are in `.github/workflows/release.yml`; bump `pyproject.toml` and
 `src/cotwatcher/__init__.py` together, tag, and publish a GitHub release. CI reports unreleased
