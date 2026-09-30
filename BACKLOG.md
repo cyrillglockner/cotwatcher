@@ -11,6 +11,80 @@ Still alpha rather than the planned `0.1.0b1`: the event judge flags four of six
 negatives, and EV10 may change what a commitment is required to carry. Beta waits on EV10 and
 EV2.
 
+## Assessed, not started
+
+- **Decision models via Ollama `/v1/systemone` (assessed 2026-09-30, nothing implemented).**
+  Ollama 0.35.0, released 2026-09-28, added `/v1/systemone`, based on TypeSafe's Jev API, serving
+  Nimble from Bespoke Labs and Tev1 from Together AI. It takes a `state` and named `questions` and
+  returns choices, probabilities and scores rather than text, billing one output token per answer.
+  Three question types: `choice`, `noul` for the probability a condition holds, and `score` over an
+  ordered set of criteria. `noul` fits the rubric more closely than `score`, because the three
+  categories are independent rather than ordinal.
+
+  It replaces neither judge. It returns no rationale and cannot, while `parse_score` treats a
+  missing rationale as an assessment failure, because five of sixteen scorings once returned
+  all-zero scores with no rationale and read as clean chunks; a decision model makes that the
+  permanent condition rather than a defect. It also cannot quote, so it cannot take part in
+  events-v2, where a commitment carries a verbatim passage located in the source. Adopting it as
+  the judge would additionally give up the OpenAI-compatible-only constraint that lets cotwatcher
+  run against vLLM, LM Studio, llama.cpp and hosted endpoints, since this endpoint is Ollama's.
+
+  Two properties are worth measuring regardless. Cost: one output token against a full second
+  inference, which is the weakness that gates monitoring every chunk. Calibration: the returned
+  probabilities are intended to be calibrated, where a text judge's `0.9` is a language model's
+  impression of a number, which is the weaker evidence for any AUROC claim.
+
+  The shape to test, if it is tested: a `DecisionJudge` behind the existing `Judge` interface, run
+  against the eight frozen pilot labels as a development evaluation and against the external
+  transcript set as the held-out test, reported beside `gpt-oss:20b` rather than replacing it. A
+  comparable result at one output token would justify a first-pass screen in front of the LLM
+  judge, the decision model seeing every chunk and survivors going on for a rationale and quotes.
+  A screen tuned for accuracy rather than recall is a silent-drop defect with a performance
+  benefit attached, so whatever it screens out is counted under its own name and never folded
+  into the clean count. This does not simplify the tool: the complexity is in quote verification,
+  event identity, failure semantics and context budgets, and the judge call is one method.
+
+- **`cotwatcher selftest` (2026-09-30).** The fix shape for INT6. Runs the configured judge
+  against a bundled known-positive and known-clean pair and reports whether it discriminated,
+  which is a different question from `cotwatcher check`: check asks whether the endpoint is
+  reachable and the context large enough, selftest asks whether this judge flags anything at all.
+  An integrator runs it, watches a real alert travel through their own handler, and only then has
+  grounds to read silence as clean. Two fixtures establish liveness and nothing about accuracy,
+  and the output must say so or it becomes a detection number that was never measured.
+
+- **Live reasoning display (2026-09-30).** Show the reasoning as it arrives while an application
+  runs. Distinct from the stream tap in build order step 4, which chunks a live stream into an
+  async scoring queue behind `watch()`; this is a display with no judge in the loop and no
+  gating, and it is not what the review deferred.
+
+  It is also the most convincing demo a monitor can have while demonstrating nothing about
+  assessment: reasoning scrolling past shows that capture works, and is equally impressive with
+  the judge unreachable throughout. So every chunk on screen carries its assessment state —
+  pending, clean, flagged, unassessed — and an unassessed chunk reads worse than a clean one
+  rather than the same. Its value is onboarding and liveness, not detection: `PLAN.md` already
+  records that `tail -f` on the reasoning beats this for one person watching one session, and
+  that cotwatcher exists for the moment nobody is reading. Build it small for that reason, and
+  keep it from growing into step 4 by accident.
+
+- **Acceptance-test protocol (2026-09-30).** The next MVP validation is handing the guide to a
+  fresh coding-agent session. For the result to mean anything the session gets the wheel from
+  PyPI and the guide shipped inside it, not the repository: with `src/`, `PLAN.md` and
+  `FINDINGS.md` available it routes around any defect in the guide by reading the code, which a
+  real integrating agent usually cannot do. Reading the package source is itself a finding and is
+  recorded. Two passes: an application calling a hosted API, where the honest outcome is that the
+  reasoning is not exposed and the question is how early the guide says so; and a small
+  application against a local model server, carried through the guide's own verification section.
+  The session reports friction — every point where it guessed, backtracked, or found an assertion
+  false — and does not fix the guide, because a patch shows what the agent would have written
+  while the friction shows what the guide failed to say.
+
+  The sample application is built in a separate session from a specification that never mentions
+  monitoring, so the fixture is not shaped to fit the integration. It must call a local
+  OpenAI-compatible endpoint, or the second pass has no reasoning to read. Selftest removes the
+  requirement that the application provoke a real commitment, which no specification can
+  guarantee from a small model: liveness is established by the fixtures, and a genuine positive
+  from the application is a bonus rather than the thing the test depends on.
+
 Release steps are in `.github/workflows/release.yml`; bump `pyproject.toml` and
 `src/cotwatcher/__init__.py` together, tag, and publish a GitHub release. CI reports unreleased
 user-facing changes on every push to main and fails once they are more than a week old.

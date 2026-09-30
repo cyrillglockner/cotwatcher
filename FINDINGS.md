@@ -16,8 +16,8 @@ F4 and R5 are three entries about one thing.
 
 ## Summary
 
-26 review entries. Three problems were each raised twice, so those 26 entries
-cover **22 distinct problems**: exit-code semantics is RR1, F4 and R5; capture
+27 review entries. Three problems were each raised twice, so those 27 entries
+cover **23 distinct problems**: exit-code semantics is RR1, F4 and R5; capture
 coverage is F1 and R1; the harness verdict is F5 and R2. Counting entries is
 not counting problems.
 
@@ -26,6 +26,7 @@ not counting problems.
 | verified-fixed | 23 | a named test or a measured before/after |
 | partially-fixed | 2 | F8, F9 |
 | accepted-limitation | 1 | RR4 |
+| open | 1 | INT6 |
 
 Two further items are tracked in **Open** and were never review findings:
 `HARNESS-1` (same-process report forgery) and `RESEARCH-1` (the product
@@ -123,6 +124,7 @@ examples. Update these IDs in place as fixes land.
 | INT3 | Sample does not handle judge transport failure or demonstrate response isolation | verified-fixed | `docs/INTEGRATION.md:81` calls `judge.score()` synchronously without an exception boundary. Endpoint failures raise before `score.ok` can be inspected, despite the verification section requiring an unavailable judge not to take down the application. Show a small boundary that records transport failure as unassessed, and explicitly mark where the agent should schedule/queue scoring outside the response path. No general queue framework required. Acceptance: fake judge raising ConnectionError is logged as unassessed without propagating into the user request; normal scoring still works. **Fixed:** Reproduced: `LLMJudge.score` calls the client with no exception boundary, so a transport failure raises before `score.ok` is reached. The example wraps the call, records the chunk as unassessed, and runs in an `assess()` function the guide says to call off the response path. The asymmetry with `EventJudge.propose`, which returns an error verdict instead of raising, is documented and logged as INT5. `test_the_example_catches_a_judge_call_that_raises` |
 | INT4 | A previously offline test now contacts the real watched endpoint | verified-fixed | `tests/test_cli.py::test_check_warns_when_no_input_limit_is_set` calls `check` while mocking only Settings.make_judge. Since check now contacts the watched model, this can perform real inference. Use `--judge-only` for this judge-budget warning test or mock Endpoint.client. Verify the test never reaches a real client; retain separate fake-client coverage of the watched-model check. **Fixed:** The test now passes `--judge-only` and fails if any endpoint is contacted. `test_no_test_reaches_a_live_endpoint_through_check` guards the whole path, so a future `check` test that forgets to mock fails rather than loading a local model. Full suite runs offline: 209 passed, none deselected |
 | INT5 | Two judges fail in two different ways | verified-fixed | `LLMJudge.score` raises on transport failure while `EventJudge.propose` returns a verdict carrying `error`. An integration written against one and given the other either crashes or silently treats a failed call as a verdict with no events. Both now follow one rule: unreachable raises `JudgeUnavailable`, because no reply exists and an exception cannot read as clean; a reply that exists and is unusable, or an input over the budget, comes back as a result carrying `error`, because retrying will not help. `test_an_unreachable_judge_raises_from_both_judges` and two companions assert the split on both judges. `cotwatcher propose` stops on an unreachable judge rather than writing one identical failure per turn |
+| INT6 | The verification procedure passes with a dead alert path | open | Raised by Claude on 2026-09-30 while designing the acceptance test, not by a Codex review. `docs/INTEGRATION.md` asks for four checks before reporting the work done: `check` exits 0, a verdict was produced for a reply that had reasoning, a reply with no reasoning reads as unassessed, an unreachable judge does not read as clean. None of the four requires an alert to be raised. Step 2 is satisfied by a clean verdict, and steps 3 and 4 are both negative paths, so the branch an integration runs when `score.over()` is non-empty can be absent and every check still passes. The wheel ships no sample reasoning, so an integrator has nothing known-positive to test against. This is the repository's recurring defect one level up: the procedure that verifies the monitor assesses nothing and looks fine. Required fix: a bundled known-positive and known-clean pair the configured judge can be run against, and a verification step that the integration's own flagged-path code executed. The fixture must not be the worked example in the judge's system prompt, which the judge has been shown together with its answer. Two fixtures establish liveness and nothing about accuracy, and the output has to say so. Acceptance: a live judge flags the positive and not the clean one, and an integration whose flagged branch is removed fails a documented check |
 
 Verification at the reviewed version: **195 passed, 1 deselected** using
 `.venv/bin/python -B -m pytest -q -p no:cacheprovider -k 'not test_check_warns_when_no_input_limit_is_set'`.

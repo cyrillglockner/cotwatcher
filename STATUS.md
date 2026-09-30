@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-09-29.
+Last updated 2026-09-30.
 
 cotwatcher reads a model's chain of thought and decides whether the model committed to
 pursuing behaviour a rubric prohibits. It does not assess the model's output.
@@ -118,3 +118,14 @@ fixed, each verified by a named test, and both judges now follow one failure rul
 raises, an unusable reply comes back carrying an error, neither is ever clean. The review ran
 195 tests successfully and excluded that endpoint-contacting test. No new detection measurement
 was made.
+
+## Known defect in the integration verification — 2026-09-30
+
+The integration guide asks for four checks before an integration is reported as done, and none
+of them requires an alert to be raised. One is satisfied by a clean verdict and two are negative
+paths, so the code an integration runs on a flag can be absent while every check passes. The
+installed package ships no sample reasoning, so an integrator has nothing known-positive to test
+against. Logged as INT6 and open. This is the defect shape the project keeps finding, moved one
+level up: the procedure that verifies the monitor assesses nothing and looks fine. The fix under
+consideration is a bundled known-positive and known-clean pair the configured judge can be run
+against, establishing liveness and explicitly not accuracy.
