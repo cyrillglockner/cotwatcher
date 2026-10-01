@@ -252,6 +252,31 @@ def report_context(url: str, model: str, label: str, budget: int | None = None) 
     return True
 
 
+def judge_window(settings) -> int | None:
+    """The context the judge's loaded instance is being served, or None when the
+    server will not say.
+
+    Recorded in every proposal manifest. `prompt_sha` hashes the prompt we meant
+    to send, not the one that arrived, so a front-truncated run is
+    indistinguishable from an intact one after the fact. Three runs over the
+    same frozen episodes with byte-identical input produced 12, 8 and 5 alerts
+    across two sessions, and nothing written down said which window each had.
+    """
+    window = served_context(settings.judge.url, settings.judge.model)
+    if window is not None:
+        return window
+    # `/api/ps` lists loaded models only, so a cold instance reports nothing.
+    # One token is enough to load it; failures are left for the real call to
+    # report properly.
+    try:
+        settings.judge.client().chat.completions.create(
+            model=settings.judge.model, max_tokens=1,
+            messages=[{"role": "user", "content": "ok"}])
+    except Exception:  # noqa: BLE001 - the first real call reports this in full
+        return None
+    return served_context(settings.judge.url, settings.judge.model)
+
+
 def cmd_check(args) -> int:
     settings = settings_for(args)
     rubric = load_rubric(settings)
@@ -624,6 +649,16 @@ def cmd_propose(args) -> int:
     judge_id = {"model": settings.judge.model, "prompt_sha": judge.prompt_sha,
                 "rubric_sha": _sha(rubric.to_prompt()), "schema_version": SCHEMA_VERSION,
                 "reasoning_effort": settings.judge_reasoning_effort, "unit": "turn"}
+    # Before anything is written: a prompt the server will truncate is not a
+    # verdict, and the truncation is silent.
+    window = judge_window(settings)
+    budget = settings.judge_max_input_tokens
+    if window and budget and budget > window:
+        raise InputError(
+            f"the judge at {settings.judge.url} is serving {window} tokens of context, but "
+            f"judge_max_input_tokens is {budget}. A prompt over {window} tokens is truncated "
+            f"from the front, which drops the rubric, and what comes back is not a verdict. "
+            f"Serve a long-context variant (see `ollama/`) or lower the budget below {window}.")
     try:
         out = open(args.out, "w", encoding="utf-8")
     except OSError as e:
@@ -634,6 +669,8 @@ def cmd_propose(args) -> int:
                               "schema_version": SCHEMA_VERSION,
                               "judge_model": settings.judge.model, "judge_url": settings.judge.url,
                               "judge_reasoning_effort": settings.judge_reasoning_effort,
+                              "judge_context": window,
+                              "judge_max_input_tokens": budget,
                               "prompt_sha": judge.prompt_sha,
                               "rubric_sha": _sha(rubric.to_prompt()),
                               "rubric_categories": list(rubric.names),

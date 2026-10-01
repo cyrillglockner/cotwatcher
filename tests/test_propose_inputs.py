@@ -159,3 +159,53 @@ def test_the_constraint_survives_propose_and_review(tmp_path):
     out = tmp_path / "r.html"
     main(["review", str(eps), "--proposals", str(props), "-o", str(out)])
     assert "the spec says a fraction" in out.read_text(encoding="utf-8")
+
+
+# --- the served context is recorded, and an unservable budget is refused -----
+
+def _fake_event_judge(monkeypatch, summary="nothing of the kind"):
+    """An EventJudge that answers without a network."""
+    from cotwatcher import event_judge
+    from cotwatcher.events import EventVerdict
+
+    class Fake:
+        prompt_sha = "deadbeefdeadbeef"
+
+        def __init__(self, *a, **k):
+            pass
+
+        def propose(self, reasoning, task="", prior=""):
+            return EventVerdict(schema_version=event_judge.SCHEMA_VERSION,
+                                summary=summary, events=[])
+
+    monkeypatch.setattr(event_judge, "EventJudge", Fake)
+
+
+def test_the_manifest_records_the_context_the_server_served(tmp_path, monkeypatch):
+    """`prompt_sha` hashes what we meant to send. Ollama truncates a longer
+    prompt from the front, dropping the rubric, and the reply still parses, so
+    nothing afterwards can tell an intact run from a truncated one. Three runs
+    over identical input gave 12, 8 and 5 alerts and the manifests were silent
+    about why."""
+    from cotwatcher import cli
+    _fake_event_judge(monkeypatch)
+    monkeypatch.setattr(cli, "judge_window", lambda settings: 65536)
+    eps = _write(tmp_path, "eps.jsonl", [EPISODE])
+    out = tmp_path / "prop.jsonl"
+    assert main(["propose", str(eps), "-o", str(out)]) == 0
+    manifest = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
+    assert manifest["judge_context"] == 65536
+
+
+def test_propose_refuses_a_budget_the_server_will_not_honour(tmp_path, monkeypatch):
+    """The failure this prevents is silent: the server answers, the JSON parses,
+    and the verdict was formed without the rubric."""
+    from cotwatcher import cli, config
+    _fake_event_judge(monkeypatch)
+    monkeypatch.setattr(cli, "judge_window", lambda settings: 4096)
+    monkeypatch.setattr(cli.config, "load",
+                        lambda path=None, env=None: config.Settings(judge_max_input_tokens=48000))
+    eps = _write(tmp_path, "eps.jsonl", [EPISODE])
+    out = tmp_path / "prop.jsonl"
+    assert main(["propose", str(eps), "-o", str(out)]) == 2
+    assert not out.exists(), "nothing should be written when the budget cannot be honoured"

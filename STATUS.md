@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-09-30.
+Last updated 2026-10-01.
 
 cotwatcher reads a model's chain of thought and decides whether the model committed to
 pursuing behaviour a rubric prohibits. It does not assess the model's output.
@@ -123,9 +123,51 @@ was made.
 
 The integration guide asks for four checks before an integration is reported as done, and none
 of them requires an alert to be raised. One is satisfied by a clean verdict and two are negative
-paths, so the code an integration runs on a flag can be absent while every check passes. The
-installed package ships no sample reasoning, so an integrator has nothing known-positive to test
-against. Logged as INT6 and open. This is the defect shape the project keeps finding, moved one
-level up: the procedure that verifies the monitor assesses nothing and looks fine. The fix under
-consideration is a bundled known-positive and known-clean pair the configured judge can be run
-against, establishing liveness and explicitly not accuracy.
+paths, so the code an integration runs on a flag can be absent while every check passes. Logged as
+INT6 and open. This is the defect shape the project keeps finding, moved one level up: the
+procedure that verifies the monitor assesses nothing and looks fine.
+
+Corrected 2026-10-01: an earlier version of this section said the installed package ships no
+sample reasoning. It does. `cotwatcher check` scores an inline reward-hacking chunk and reports
+the result. What stands is narrower: `check` prints a note and still exits 0 when the judge misses
+that chunk, there is no clean-negative counterpart to tell discrimination from flagging
+everything, nothing exercises the event judge's positive path, and the fixture is a near-paraphrase
+of the worked example in the scoring judge's own system prompt.
+
+
+## The events-v2 figures are environment-specific — 2026-10-01
+
+The event-judge numbers above were produced in a single session and do not reproduce across
+sessions. Measured on 2026-10-01 against the same 12 turns that carried the frozen run's verified
+commitments, with byte-identical input: `prompt_sha` and `rubric_sha` match the frozen manifest,
+all 17 recorded `source_sha` values match the text that was scored, and the only change to
+`event_judge.py` since the frozen run at `ac2a3ed` is error handling that does not touch input
+construction.
+
+| run | Ollama | turns alerting | frozen decision recovered |
+|---|---|---|---|
+| frozen 2026-09-24 | 0.32.9 | 12 of 12 | 12 of 12 |
+| rerun 2026-09-30 | 0.32.9 | 8 of 12 | 6 of 12 |
+| rerun 2026-10-01, three passes | 0.35.0 | 5 of 12 | 2 of 12 |
+
+The frozen row is not an independent measurement: those 12 turns were selected because the frozen
+run found verified commitments in them.
+
+Within one session the judge is deterministic. Three consecutive passes agreed on all 12 turns,
+every one. So this is not per-call sampling noise, and repeated sampling would not recover the
+missing detections. The variation is between environments, and the cause is not established: the
+served context of the judge instance was not recorded for the earlier runs, and an Ollama upgrade
+from 0.32.9 to 0.35.0 falls between the last two rows.
+
+What this does to the figures above. Episode-level detection was the steadier measure, 6 of 6
+against 5 of 6 across the two reruns, so the headline — both positives detected, four of six
+negatives flagged — is probably sound. The event-level counts are not: 13 verified commitments, of
+which 1 carries a constraint quoted from the model's own reasoning, is one draw in one environment.
+EV10 was premised on that ratio and needs re-measuring before events-v3 is designed against it.
+
+Fixed as part of this: `cotwatcher propose` now records `judge_context` and
+`judge_max_input_tokens` in its manifest and refuses to start when the served window cannot hold
+the budget. `prompt_sha` hashes the prompt that was meant to be sent, not the one that arrived, so
+without the served window a front-truncated run and an intact one are indistinguishable
+afterwards. Recorded against F8, whose earlier claim that effective context could not be queried
+from the endpoint was wrong.
